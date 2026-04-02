@@ -3513,9 +3513,13 @@ const ACTIONS = {
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!el) return;
-  // Modal overlay backdrop click — close if clicked directly on overlay
+  // Modal overlay backdrop click — only close if the click landed on the
+  // overlay itself (backdrop), NOT on a child element inside the modal box.
   if (el.classList.contains('modal-overlay')) {
-    el.classList.remove('active');
+    if (e.target === el) {
+      el.classList.remove('active');
+      _popModalFocus();
+    }
     return;
   }
   const action = el.dataset.action;
