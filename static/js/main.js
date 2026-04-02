@@ -222,6 +222,93 @@ function _flashCell(el) {
   });
 }
 
+// ── BUTTON LOADING HELPER ─────────────────────────────────────────────────
+/**
+ * Disables btn, sets loading HTML, runs asyncFn, then restores btn state.
+ * Works whether the button has icons (innerHTML) or plain text.
+ */
+async function _withButtonLoading(btn, asyncFn, loadingHTML = 'Guardando...') {
+  const origHTML = btn ? btn.innerHTML : null;
+  if (btn) { btn.disabled = true; btn.innerHTML = loadingHTML; }
+  try {
+    return await asyncFn();
+  } finally {
+    if (btn) { btn.disabled = false; if (origHTML != null) btn.innerHTML = origHTML; }
+  }
+}
+
+// ── JSON FETCH HELPER ─────────────────────────────────────────────────────
+/**
+ * Shorthand for apiFetch with Content-Type: application/json.
+ * Pass data=null for bodyless requests (DELETE, POST without body).
+ */
+async function _apiFetchJson(url, method = 'POST', data = null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (data != null) opts.body = JSON.stringify(data);
+  return apiFetch(url, opts);
+}
+
+// ── RESULT ELEMENT HELPERS ────────────────────────────────────────────────
+/** Show an error message in a result/status element. */
+function _showResultErr(el, msg) {
+  if (!el) return;
+  el.style.color = 'var(--red)';
+  el.textContent = msg;
+}
+/** Show a success message in a result/status element. */
+function _showResultOk(el, msg) {
+  if (!el) return;
+  el.style.color = 'var(--green)';
+  el.textContent = msg;
+}
+
+// ── TBODY LOADING HELPER ─────────────────────────────────────────────────
+/** Set a tbody to a single "Cargando..." row while data is being fetched. */
+function _setTbodyLoading(tbody, colSpan = 6) {
+  if (tbody) tbody.innerHTML = `<tr><td colspan="${colSpan}" class="text-muted">Cargando...</td></tr>`;
+}
+
+// ── LOADING MESSAGE HELPER ────────────────────────────────────────────────
+/** Show a spinner + message inside a result element during an async action. */
+function _setLoadingMessage(el, msg = 'Procesando...') {
+  if (el) el.innerHTML = `<span class="spinner-inline"></span> ${msg}`;
+}
+
+// ── PAGINATION BUTTONS HELPER ─────────────────────────────────────────────
+/**
+ * Build the prev / page-number / next button HTML for a pagination bar.
+ * @param {number} page    Current page (1-based)
+ * @param {number} pages   Total pages
+ * @param {string} action  data-action value for each button
+ * @returns {string} HTML string — assign to element.innerHTML
+ */
+function _renderPageBtns(page, pages, action) {
+  const start = Math.max(1, page - 2);
+  const end   = Math.min(pages, page + 2);
+  let btns = `<button class="page-btn" data-action="${action}" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>‹ Ant.</button>`;
+  for (let i = start; i <= end; i++) {
+    btns += `<button class="page-btn ${i === page ? 'active' : ''}" data-action="${action}" data-page="${i}">${i}</button>`;
+  }
+  btns += `<button class="page-btn" data-action="${action}" data-page="${page + 1}" ${page >= pages ? 'disabled' : ''}>Sig. ›</button>`;
+  return btns;
+}
+
+// ── DATA MAP HELPER ───────────────────────────────────────────────────────
+/**
+ * Convert an array of objects into a keyed map for O(1) lookup.
+ * @param {Array}  items    Source array
+ * @param {string} keyField Property to use as the map key (default 'id')
+ */
+function _buildDataMap(items, keyField = 'id') {
+  return Object.fromEntries(items.map(item => [item[keyField], item]));
+}
+
+// ── EMPTY TABLE ROW HELPER ────────────────────────────────────────────────
+/** Returns a single-row colspan cell with a "no data" message. */
+function _emptyTableRow(colSpan, msg) {
+  return `<tr><td colspan="${colSpan}" class="text-muted">${msg}</td></tr>`;
+}
+
 // ── STATE ──────────────────────────────────────────────────────────────────
 const state = {
   // Órdenes
@@ -971,15 +1058,7 @@ function renderPaginacion(total, page, pages) {
   const to = Math.min(page * state.perPage, total);
   info.textContent = `Mostrando ${from}–${to} de ${total} órdenes`;
 
-  let btns = `<button class="page-btn" data-action="go-page" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>‹ Ant.</button>`;
-  const start = Math.max(1, page - 2);
-  const end = Math.min(pages, page + 2);
-  for (let i = start; i <= end; i++) {
-    btns += `<button class="page-btn ${i === page ? 'active' : ''}" data-action="go-page" data-page="${i}">${i}</button>`;
-  }
-  btns += `<button class="page-btn" data-action="go-page" data-page="${page + 1}" ${page >= pages ? 'disabled' : ''}>Sig. ›</button>`;
-
-  ctrl.innerHTML = btns;
+  ctrl.innerHTML = _renderPageBtns(page, pages, 'go-page');
   state.currentPage = page;
   state.totalPages = pages;
 }
@@ -1419,9 +1498,6 @@ async function enviarNuevaOrden() {
   if (hasError) return;
 
   // ── All valid: lock button + show spinner ──────────────────────────────────
-  const origHTML = btn ? btn.innerHTML : null;
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-inline"></span> Enviando...'; }
-
   const clienteVal = document.getElementById('f-cliente')?.value || 'STD';
   _syncRazonSocial();
   const data = {
@@ -1444,35 +1520,35 @@ async function enviarNuevaOrden() {
   }
   if (deskVal) data.desk = deskVal;
 
-  try {
-    const res    = await apiFetch('/api/ordenes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-    const result = await res.json();
+  await _withButtonLoading(btn, async () => {
+    try {
+      const res    = await _apiFetchJson('/api/ordenes', 'POST', data);
+      const result = await res.json();
 
-    if (res.ok && result.success) {
-      document.getElementById('modalNuevaOrden').classList.remove('active');
-      _popModalFocus();
-      _resetNuevaOrdenForm();
-      state.currentPage = 1;
-      cargarOrdenes(false);
+      if (res.ok && result.success) {
+        document.getElementById('modalNuevaOrden').classList.remove('active');
+        _popModalFocus();
+        _resetNuevaOrdenForm();
+        state.currentPage = 1;
+        cargarOrdenes(false);
 
-      const alertMsg = result.alertas_riesgo?.length ? ` — ⚠ ${result.alertas_riesgo[0]}` : '';
-      showToast('Orden creada correctamente.' + alertMsg, 'ok', 'Nueva Orden');
-    } else {
-      const detail = result.detail;
-      if (detail && typeof detail === 'object' && detail.tipo === 'LIMITE_RIESGO') {
-        showToast(detail.mensaje, 'error', 'Límite de Riesgo');
+        const alertMsg = result.alertas_riesgo?.length ? ` — ⚠ ${result.alertas_riesgo[0]}` : '';
+        showToast('Orden creada correctamente.' + alertMsg, 'ok', 'Nueva Orden');
       } else {
-        showToast(_apiErrMsg(res, result, 'No se pudo crear la orden.'), 'error');
+        const detail = result.detail;
+        if (detail && typeof detail === 'object' && detail.tipo === 'LIMITE_RIESGO') {
+          showToast(detail.mensaje, 'error', 'Límite de Riesgo');
+        } else {
+          showToast(_apiErrMsg(res, result, 'No se pudo crear la orden.'), 'error');
+        }
+      }
+    } catch(e) {
+      if (e.message !== '401 No autenticado — redirigiendo al login') {
+        _logError('enviarNuevaOrden', e);
+        showToast('Error de red al crear la orden. Verificá tu conexión.', 'error');
       }
     }
-  } catch(e) {
-    if (e.message !== '401 No autenticado — redirigiendo al login') {
-      _logError('enviarNuevaOrden', e);
-      showToast('Error de red al crear la orden. Verificá tu conexión.', 'error');
-    }
-  } finally {
-    if (btn) { btn.disabled = false; if (origHTML != null) btn.innerHTML = origHTML; }
-  }
+  }, '<span class="spinner-inline"></span> Enviando...');
 }
 
 function togglePrecioLimite() {
@@ -1900,19 +1976,17 @@ function renderPreciosTable(precios, hMap = {}) {
 
 async function refrescarPrecios() {
   const btn = document.querySelector('[data-action="refrescar-precios"]');
-  const origHTML = btn ? btn.innerHTML : null;
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-inline"></span> Actualizando...'; }
-  try {
-    const res = await apiFetch('/api/prices/refresh', { method: 'POST' });
-    const data = await res.json();
-    setStatusEvent(`Precios actualizados: ${data.actualizadas.join(', ') || 'ninguno mapeado aún'}`);
-    cargarPosiciones();
-  } catch (e) {
-    setStatusEvent('Error al actualizar precios');
-    showToast('Error al actualizar precios. Revisá la conexión.', 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = origHTML; }
-  }
+  await _withButtonLoading(btn, async () => {
+    try {
+      const res = await apiFetch('/api/prices/refresh', { method: 'POST' });
+      const data = await res.json();
+      setStatusEvent(`Precios actualizados: ${data.actualizadas.join(', ') || 'ninguno mapeado aún'}`);
+      cargarPosiciones();
+    } catch (e) {
+      setStatusEvent('Error al actualizar precios');
+      showToast('Error al actualizar precios. Revisá la conexión.', 'error');
+    }
+  }, '<span class="spinner-inline"></span> Actualizando...');
 }
 
 async function ingresarPrecioManual() {
@@ -1928,11 +2002,7 @@ async function ingresarPrecioManual() {
     return;
   }
 
-  const res = await apiFetch('/api/prices/manual', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ especie, precio }),
-  });
+  const res = await _apiFetchJson('/api/prices/manual', 'POST', { especie, precio });
   const data = await res.json();
   if (res.ok) {
     resultEl.className = 'execute-result ok';
@@ -2075,14 +2145,7 @@ function renderTxPaginacion(total, page, pages) {
   const to = Math.min(page * state.txPerPage, total);
   info.textContent = `Mostrando ${from}–${to} de ${total} ejecuciones`;
 
-  let btns = `<button class="page-btn" data-action="go-tx-page" data-page="${page-1}" ${page<=1?'disabled':''}>‹ Ant.</button>`;
-  const start = Math.max(1, page - 2);
-  const end = Math.min(pages, page + 2);
-  for (let i = start; i <= end; i++) {
-    btns += `<button class="page-btn ${i===page?'active':''}" data-action="go-tx-page" data-page="${i}">${i}</button>`;
-  }
-  btns += `<button class="page-btn" data-action="go-tx-page" data-page="${page+1}" ${page>=pages?'disabled':''}>Sig. ›</button>`;
-  ctrl.innerHTML = btns;
+  ctrl.innerHTML = _renderPageBtns(page, pages, 'go-tx-page');
   state.txPage = page;
   state.txTotalPages = pages;
 }
@@ -2120,11 +2183,7 @@ async function _doEjecutarOrden(orden_id, cantidad, precio, mercado, resultEl) {
   resultEl.textContent = 'Procesando...';
 
   try {
-    const res = await apiFetch('/api/transactions/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orden_id, cantidad, precio, mercado }),
-    });
+    const res = await _apiFetchJson('/api/transactions/execute', 'POST', { orden_id, cantidad, precio, mercado });
     const data = await res.json();
 
     if (res.ok) {
@@ -2609,7 +2668,7 @@ async function cargarMercado() {
     if (!hasAnyPrice) refrescarMercado();
   } catch {
     document.getElementById('tbl-byma-body').innerHTML   = '<tr><td colspan="4" class="text-muted">Error al cargar datos.</td></tr>';
-    document.getElementById('tbl-merval-body').innerHTML = '<tr><td colspan="5" class="text-muted">Error al cargar datos.</td></tr>';
+    document.getElementById('tbl-merval-body').innerHTML = _emptyTableRow(5, 'Error al cargar datos.');
   }
 }
 
@@ -3824,14 +3883,14 @@ async function cargarFirma(page = 1) {
 
   // Movimientos
   const tbody = document.getElementById('firmaMovBody');
-  if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Cargando...</td></tr>';
+  if (tbody) _setTbodyLoading(tbody, 7);
   try {
     const res = await apiFetch(`/api/firma/movimientos?page=${page}&per_page=${MOV_PER_PAGE}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!tbody) return;
     if (!data.entries?.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Sin movimientos.</td></tr>';
+      tbody.innerHTML = _emptyTableRow(7, 'Sin movimientos.');
     } else {
       tbody.innerHTML = data.entries.map(e => {
         const color = e.sentido === 'CREDIT' ? 'var(--buy,#4caf50)' : 'var(--sell,#e05c5c)';
@@ -3871,13 +3930,13 @@ async function cargarFirma(page = 1) {
 async function cargarPosicionesFirma() {
   const tbody = document.getElementById('firmaPosBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 7);
   try {
     const res = await apiFetch('/api/firma/posiciones');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data.posiciones?.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Sin posiciones.</td></tr>';
+      tbody.innerHTML = _emptyTableRow(7, 'Sin posiciones.');
       return;
     }
     const fmt = v => v == null ? '—' : parseFloat(v).toLocaleString('es-AR', { minimumFractionDigits: 4 });
@@ -3902,13 +3961,13 @@ let _opMovActual = null;  // operador id cuya detail está visible
 async function cargarCuentasOperadores() {
   const tbody = document.getElementById('cuentasOpBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 6);
   try {
     const res = await apiFetch('/api/cuentas/operadores');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data.operadores?.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-muted">No hay operadores registrados.</td></tr>';
+      tbody.innerHTML = _emptyTableRow(6, 'No hay operadores registrados.');
       return;
     }
     const fmt = v => v == null ? '—' : parseFloat(v).toLocaleString('es-AR', { minimumFractionDigits: 2 });
@@ -3944,11 +4003,11 @@ async function verMovimientosOp(opId, nombre, page = 1) {
   if (!panel || !tbody) return;
   panel.style.display = '';
   if (title) title.textContent = `Movimientos — ${nombre}`;
-  tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 7);
   try {
     const data = await apiFetch(`/api/cuentas/operadores/${opId}/movimientos?page=${page}&per_page=${MOV_PER_PAGE}`).then(r => r.json());
     if (!data.entries?.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Sin movimientos.</td></tr>';
+      tbody.innerHTML = _emptyTableRow(7, 'Sin movimientos.');
     } else {
       tbody.innerHTML = data.entries.map(e => {
         const color = e.sentido === 'CREDIT' ? 'var(--buy,#4caf50)' : 'var(--sell,#e05c5c)';
@@ -3999,10 +4058,10 @@ async function cargarAlertas() {
   _showSkeleton('alertasBody', 8, 4);
   try {
     const res = await apiFetch('/api/alertas');
-    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Error cargando alertas.</td></tr>'; return; }
+    if (!res.ok) { tbody.innerHTML = _emptyTableRow(8, 'Error cargando alertas.'); return; }
     const rows = await res.json();
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Sin alertas configuradas.</td></tr>';
+      tbody.innerHTML = _emptyTableRow(8, 'Sin alertas configuradas.');
       return;
     }
     const LABEL = { ORDEN_MONTO: 'Orden Monto', POSICION_CAIDA: 'Pos. Caída P&L', POSICION_SUBE: 'Pos. Suba P&L', VOLUMEN_CLIENTE: 'Vol. Cliente' };
@@ -4024,7 +4083,7 @@ async function cargarAlertas() {
           <button class="btn-danger" style="font-size:10px;padding:2px 8px" data-action="eliminar-alerta" data-id="${a.id}" aria-label="Eliminar alerta">✕</button>
         </td>
       </tr>`).join('');
-  } catch { tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Error de red.</td></tr>'; }
+  } catch { tbody.innerHTML = _emptyTableRow(8, 'Error de red.'); }
 }
 
 async function guardarAlerta() {
@@ -4041,7 +4100,7 @@ async function guardarAlerta() {
     return;
   }
   try {
-    const res = await apiFetch('/api/alertas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await _apiFetchJson('/api/alertas', 'POST', payload);
     if (!res.ok) {
       const err = await res.json();
       if (msg) { msg.textContent = err.detail || 'Error al crear alerta.'; msg.style.color = 'var(--red)'; }
@@ -4090,7 +4149,7 @@ function resetAuditPage() { _auditPage = 1; cargarAuditoria(); }
 async function cargarAuditoria() {
   const tbody = document.getElementById('auditBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 5);
   const tabla    = document.getElementById('auditTablaFiltro')?.value.trim() || '';
   const op       = document.getElementById('auditOpFiltro')?.value || '';
   const perPage  = document.getElementById('auditPerPage')?.value || '50';
@@ -4118,7 +4177,7 @@ async function cargarAuditoria() {
     renderAuditPagBar(data.current_page, data.pages);
 
     if (!data.logs.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Sin registros para los filtros seleccionados.</td></tr>';
+      tbody.innerHTML = _emptyTableRow(5, 'Sin registros para los filtros seleccionados.');
       return;
     }
     const opColor = { CREATE: 'var(--buy,#4caf50)', UPDATE: 'var(--text2)', CANCEL: 'var(--sell,#e05c5c)', EXECUTE: 'var(--accent)' };
@@ -4295,15 +4354,15 @@ function initCollapsiblePanels() {
 async function cargarUsuarios() {
   const tbody = document.getElementById('usuariosBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 8);
   try {
     const res  = await apiFetch('/api/users');
     const data = await res.json();
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Sin usuarios</td></tr>';
+      tbody.innerHTML = _emptyTableRow(8, 'Sin usuarios');
       return;
     }
-    _usuarioDataMap = Object.fromEntries(data.map(u => [u.id, u]));
+    _usuarioDataMap = _buildDataMap(data);
     tbody.innerHTML = data.map(u => `
       <tr>
         <td>${esc(u.id)}</td>
@@ -4368,9 +4427,7 @@ function cerrarModalUsuario(e) {
 }
 
 async function guardarUsuario(btn) {
-  const origText = btn?.textContent;
-  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
-  const resEl = document.getElementById('usuarioResult');
+  const resEl    = document.getElementById('usuarioResult');
   resEl.textContent = '';
   const id       = document.getElementById('u-id').value;
   const username = document.getElementById('u-username').value.trim();
@@ -4378,50 +4435,36 @@ async function guardarUsuario(btn) {
   const role     = document.getElementById('u-rol').value;
   const password = document.getElementById('u-password').value;
 
-  try {
-    let res;
-    if (id) {
-      const body = { role, email: email || null };
-      if (password) body.password = password;
-      res = await apiFetch(`/api/users/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-    } else {
-      if (!username || !password) { resEl.textContent = 'Username y contraseña son requeridos.'; return; }
-      res = await apiFetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email: email || null, role, password }),
-      });
+  await _withButtonLoading(btn, async () => {
+    try {
+      let res;
+      if (id) {
+        const body = { role, email: email || null };
+        if (password) body.password = password;
+        res = await _apiFetchJson(`/api/users/${id}`, 'PATCH', body);
+      } else {
+        if (!username || !password) { resEl.textContent = 'Username y contraseña son requeridos.'; return; }
+        res = await _apiFetchJson('/api/users', 'POST', { username, email: email || null, role, password });
+      }
+      if (!res.ok) {
+        const err = await res.json();
+        const detail = err.detail;
+        _showResultErr(resEl, Array.isArray(detail)
+          ? detail.map(d => d.msg || JSON.stringify(d)).join(' | ')
+          : (detail || 'Error al guardar'));
+        return;
+      }
+      document.getElementById('modalUsuario').classList.remove('active');
+      await cargarUsuarios();
+    } catch(e) {
+      _showResultErr(resEl, e.message);
     }
-    if (!res.ok) {
-      const err = await res.json();
-      const detail = err.detail;
-      resEl.textContent = Array.isArray(detail)
-        ? detail.map(d => d.msg || JSON.stringify(d)).join(' | ')
-        : (detail || 'Error al guardar');
-      resEl.style.color = 'var(--red)';
-      return;
-    }
-    document.getElementById('modalUsuario').classList.remove('active');
-    await cargarUsuarios();
-  } catch(e) {
-    resEl.textContent = e.message;
-    resEl.style.color = 'var(--red)';
-  } finally {
-    if (btn) { btn.disabled = false; if (origText) btn.textContent = origText; }
-  }
+  });
 }
 
 async function toggleUsuarioActivo(userId, activo) {
   try {
-    await apiFetch(`/api/users/${userId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_active: activo }),
-    });
+    await _apiFetchJson(`/api/users/${userId}`, 'PATCH', { is_active: activo });
     await cargarUsuarios();
   } catch(e) {
     await cargarUsuarios(); // refresh to restore correct state
@@ -4432,15 +4475,15 @@ async function toggleUsuarioActivo(userId, activo) {
 async function cargarClientesAdmin() {
   const tbody = document.getElementById('clientesAdminBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 7);
   try {
     const res  = await apiFetch('/api/clientes');
     const data = await res.json();
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Sin clientes</td></tr>';
+      tbody.innerHTML = _emptyTableRow(7, 'Sin clientes');
       return;
     }
-    _clienteDataMap = Object.fromEntries(data.map(c => [c.codigo, c]));
+    _clienteDataMap = _buildDataMap(data, 'codigo');
     tbody.innerHTML = data.map(c => `
       <tr>
         <td><span class="badge-tipo" style="font-family:'IBM Plex Mono',monospace;font-size:11px">${esc(c.codigo)}</span></td>
@@ -4504,55 +4547,42 @@ function cerrarModalCliente(e) {
 }
 
 async function guardarCliente(btn) {
-  const resEl  = document.getElementById('clienteResult');
+  const resEl      = document.getElementById('clienteResult');
   resEl.textContent = '';
   const codigoOrig = document.getElementById('c-codigo-orig').value;
   const codigo     = document.getElementById('c-codigo').value.trim().toUpperCase();
   const nombre     = document.getElementById('c-nombre').value.trim();
   const razon      = document.getElementById('c-razon').value.trim();
   if (!codigo || !nombre || !razon) { resEl.textContent = 'Todos los campos son requeridos.'; return; }
-  const origText = btn?.textContent;
-  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
-  try {
-    let res;
-    const esCarteraPropia = document.getElementById('c-cartera-propia').checked;
-    const esPep           = document.getElementById('c-pep').checked;
-    if (codigoOrig) {
-      res = await apiFetch(`/api/clientes/${codigoOrig}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nombre, razon_social: razon, es_cartera_propia: esCarteraPropia, es_pep: esPep }),
-      });
-    } else {
-      res = await apiFetch('/api/clientes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ codigo, nombre, razon_social: razon, es_cartera_propia: esCarteraPropia, es_pep: esPep }),
-      });
+
+  await _withButtonLoading(btn, async () => {
+    try {
+      const esCarteraPropia = document.getElementById('c-cartera-propia').checked;
+      const esPep           = document.getElementById('c-pep').checked;
+      let res;
+      if (codigoOrig) {
+        res = await _apiFetchJson(`/api/clientes/${codigoOrig}`, 'PATCH',
+          { nombre, razon_social: razon, es_cartera_propia: esCarteraPropia, es_pep: esPep });
+      } else {
+        res = await _apiFetchJson('/api/clientes', 'POST',
+          { codigo, nombre, razon_social: razon, es_cartera_propia: esCarteraPropia, es_pep: esPep });
+      }
+      if (!res.ok) {
+        const err = await res.json();
+        _showResultErr(resEl, err.detail || 'Error al guardar');
+        return;
+      }
+      document.getElementById('modalCliente').classList.remove('active');
+      await cargarClientesAdmin();
+    } catch(e) {
+      _showResultErr(resEl, e.message);
     }
-    if (!res.ok) {
-      const err = await res.json();
-      resEl.textContent = err.detail || 'Error al guardar';
-      resEl.style.color = 'var(--red)';
-      return;
-    }
-    document.getElementById('modalCliente').classList.remove('active');
-    await cargarClientesAdmin();
-  } catch(e) {
-    resEl.textContent = e.message;
-    resEl.style.color = 'var(--red)';
-  } finally {
-    if (btn) { btn.disabled = false; if (origText) btn.textContent = origText; }
-  }
+  });
 }
 
 async function toggleClienteActivo(codigo, activo) {
   try {
-    await apiFetch(`/api/clientes/${codigo}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ activo }),
-    });
+    await _apiFetchJson(`/api/clientes/${codigo}`, 'PATCH', { activo });
     await cargarClientesAdmin();
   } catch {
     await cargarClientesAdmin();
@@ -4564,16 +4594,16 @@ async function cargarTickersAdmin() {
   const tbody = document.getElementById('tickersAdminBody');
   if (!tbody) return;
   const panel = document.getElementById('tickerPanelFiltro')?.value || '';
-  tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 6);
   try {
     const res  = await apiFetch('/api/admin/tickers');
     let data   = await res.json();
     if (panel) data = data.filter(t => t.panel === panel);
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Sin tickers</td></tr>';
+      tbody.innerHTML = _emptyTableRow(6, 'Sin tickers');
       return;
     }
-    _tickerDataMap = Object.fromEntries(data.map(t => [t.especie, t]));
+    _tickerDataMap = _buildDataMap(data, 'especie');
     const fmtN = v => v != null ? v.toLocaleString('es-AR') : '—';
     tbody.innerHTML = data.map(t => `
       <tr>
@@ -4636,56 +4666,43 @@ function cerrarModalTicker(e) {
 }
 
 async function guardarTicker(btn) {
-  const resEl      = document.getElementById('tickerResult');
+  const resEl     = document.getElementById('tickerResult');
   resEl.textContent = '';
-  const especieOrig  = document.getElementById('t-especie-orig').value;
-  const especie      = document.getElementById('t-especie').value.trim().toUpperCase();
-  const panel        = document.getElementById('t-panel').value;
-  const yfSymbol     = document.getElementById('t-yf').value.trim() || null;
-  const nombre       = document.getElementById('t-nombre').value.trim() || null;
-  const volumenMax   = parseInt(document.getElementById('t-volumen-max').value) || 0;
-  const cantidadMax  = parseInt(document.getElementById('t-cantidad-max').value) || 0;
+  const especieOrig = document.getElementById('t-especie-orig').value;
+  const especie     = document.getElementById('t-especie').value.trim().toUpperCase();
+  const panel       = document.getElementById('t-panel').value;
+  const yfSymbol    = document.getElementById('t-yf').value.trim() || null;
+  const nombre      = document.getElementById('t-nombre').value.trim() || null;
+  const volumenMax  = parseInt(document.getElementById('t-volumen-max').value) || 0;
+  const cantidadMax = parseInt(document.getElementById('t-cantidad-max').value) || 0;
   if (!especie) { resEl.textContent = 'La especie es requerida.'; return; }
-  const origText = btn?.textContent;
-  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
-  try {
-    let res;
-    if (especieOrig) {
-      res = await apiFetch(`/api/admin/tickers/${especieOrig}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ panel, yf_symbol: yfSymbol, nombre, volumen_max_dia: volumenMax, cantidad_max_orden: cantidadMax }),
-      });
-    } else {
-      res = await apiFetch('/api/admin/tickers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ especie, panel, yf_symbol: yfSymbol, nombre }),
-      });
+
+  await _withButtonLoading(btn, async () => {
+    try {
+      let res;
+      if (especieOrig) {
+        res = await _apiFetchJson(`/api/admin/tickers/${especieOrig}`, 'PATCH',
+          { panel, yf_symbol: yfSymbol, nombre, volumen_max_dia: volumenMax, cantidad_max_orden: cantidadMax });
+      } else {
+        res = await _apiFetchJson('/api/admin/tickers', 'POST',
+          { especie, panel, yf_symbol: yfSymbol, nombre });
+      }
+      if (!res.ok) {
+        const err = await res.json();
+        _showResultErr(resEl, err.detail || 'Error al guardar');
+        return;
+      }
+      document.getElementById('modalTicker').classList.remove('active');
+      await cargarTickersAdmin();
+    } catch(e) {
+      _showResultErr(resEl, e.message);
     }
-    if (!res.ok) {
-      const err = await res.json();
-      resEl.textContent = err.detail || 'Error al guardar';
-      resEl.style.color = 'var(--red)';
-      return;
-    }
-    document.getElementById('modalTicker').classList.remove('active');
-    await cargarTickersAdmin();
-  } catch(e) {
-    resEl.textContent = e.message;
-    resEl.style.color = 'var(--red)';
-  } finally {
-    if (btn) { btn.disabled = false; if (origText) btn.textContent = origText; }
-  }
+  });
 }
 
 async function toggleTickerActivo(especie, activo) {
   try {
-    await apiFetch(`/api/admin/tickers/${especie}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ activo }),
-    });
+    await _apiFetchJson(`/api/admin/tickers/${especie}`, 'PATCH', { activo });
     await cargarTickersAdmin();
   } catch {
     await cargarTickersAdmin();
@@ -4742,7 +4759,7 @@ async function setBulkHorario(respetar) {
 async function cargarBots() {
   const tbody = document.getElementById('botsBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="9" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 9);
   try {
     const res  = await apiFetch('/api/admin/bots');
     const data = await res.json();
@@ -4750,10 +4767,10 @@ async function cargarBots() {
     const sw = document.getElementById('switch-horario-global');
     if (sw) sw.checked = data.length > 0 && data.every(b => b.respetar_horario !== false);
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="text-muted">Sin instancias. Creá una con "+ Nueva instancia".</td></tr>';
+      tbody.innerHTML = _emptyTableRow(9, 'Sin instancias. Creá una con "+ Nueva instancia".');
       return;
     }
-    _botDataMap = Object.fromEntries(data.map(b => [b.id, b]));
+    _botDataMap = _buildDataMap(data);
     const _perfilColor = { CONSERVADOR: '#4a9eff', MODERADO: '#f0a500', AGRESIVO: '#e05252', TRADER: '#00d4aa' };
     tbody.innerHTML = data.map(b => {
       const pColor = _perfilColor[b.perfil] || 'var(--text2)';
@@ -4886,7 +4903,7 @@ function cerrarModalBot(e) {
 }
 
 async function guardarBot(btn) {
-  const resEl = document.getElementById('botResult');
+  const resEl      = document.getElementById('botResult');
   resEl.textContent = '';
 
   const id         = document.getElementById('b-id').value;
@@ -4895,46 +4912,39 @@ async function guardarBot(btn) {
   const interval   = parseFloat(document.getElementById('b-interval').value) || 7;
   const variancePct= parseFloat(document.getElementById('b-variance').value) || 0.85;
   const maxOrdenes = parseInt(document.getElementById('b-max-ordenes').value) || 20;
-  const fillRate       = parseFloat(document.getElementById('b-fill-rate')?.value ?? 0.45);
-  const tipos          = _TODOS_TIPOS.filter(t => document.getElementById(`bt-${t}`)?.checked);
-  const respetar       = document.getElementById('b-respetar-horario')?.checked ?? true;
-  const pmRaw          = document.getElementById('b-prob-mercado')?.value;
-  const probMercado    = pmRaw !== '' && pmRaw != null ? parseFloat(pmRaw) : null;
+  const fillRate   = parseFloat(document.getElementById('b-fill-rate')?.value ?? 0.45);
+  const tipos      = _TODOS_TIPOS.filter(t => document.getElementById(`bt-${t}`)?.checked);
+  const respetar   = document.getElementById('b-respetar-horario')?.checked ?? true;
+  const pmRaw      = document.getElementById('b-prob-mercado')?.value;
+  const probMercado= pmRaw !== '' && pmRaw != null ? parseFloat(pmRaw) : null;
 
-  if (!nombre)        { resEl.textContent = 'El nombre es requerido.'; return; }
-  if (!tipos.length)  { resEl.textContent = 'Seleccioná al menos un tipo de orden.'; return; }
+  if (!nombre)       { resEl.textContent = 'El nombre es requerido.'; return; }
+  if (!tipos.length) { resEl.textContent = 'Seleccioná al menos un tipo de orden.'; return; }
 
-  const origText = btn?.textContent;
-  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
-  const body = { nombre, enabled: true, interval, variance: variancePct / 100, max_ordenes: maxOrdenes, tipos_orden: tipos, perfil, fill_rate: fillRate, respetar_horario: respetar, prob_orden_mercado: probMercado };
-  try {
-    const res = id
-      ? await apiFetch(`/api/admin/bots/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      : await apiFetch('/api/admin/bots',        { method: 'POST',  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const body = { nombre, enabled: true, interval, variance: variancePct / 100, max_ordenes: maxOrdenes,
+    tipos_orden: tipos, perfil, fill_rate: fillRate, respetar_horario: respetar, prob_orden_mercado: probMercado };
 
-    if (!res.ok) {
-      const err = await res.json();
-      resEl.textContent = err.detail || 'Error al guardar';
-      resEl.style.color = 'var(--red)';
-      return;
+  await _withButtonLoading(btn, async () => {
+    try {
+      const res = await (id
+        ? _apiFetchJson(`/api/admin/bots/${id}`, 'PATCH', body)
+        : _apiFetchJson('/api/admin/bots', 'POST', body));
+      if (!res.ok) {
+        const err = await res.json();
+        _showResultErr(resEl, err.detail || 'Error al guardar');
+        return;
+      }
+      document.getElementById('modalBot').classList.remove('active');
+      await cargarBots();
+    } catch(e) {
+      _showResultErr(resEl, e.message);
     }
-    document.getElementById('modalBot').classList.remove('active');
-    await cargarBots();
-  } catch(e) {
-    resEl.textContent = e.message;
-    resEl.style.color = 'var(--red)';
-  } finally {
-    if (btn) { btn.disabled = false; if (origText) btn.textContent = origText; }
-  }
+  });
 }
 
 async function toggleBotEnabled(botId, enabled) {
   try {
-    await apiFetch(`/api/admin/bots/${botId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
-    });
+    await _apiFetchJson(`/api/admin/bots/${botId}`, 'PATCH', { enabled });
     await cargarBots();
   } catch { await cargarBots(); }
 }
@@ -5058,7 +5068,7 @@ async function resetDemoData() {
 }
 
 async function _resetDemoDataExec(resEl) {
-  resEl.innerHTML = '<span class="spinner-inline"></span> Eliminando... (puede demorar unos segundos)';
+  _setLoadingMessage(resEl, 'Eliminando... (puede demorar unos segundos)');
   resEl.style.color = 'var(--text3)';
   try {
     const res = await apiFetch('/api/admin/demo-reset', { method: 'DELETE' });
@@ -5456,7 +5466,7 @@ async function cargarInstrumentos() {
   if (!tbody) return;
   const tipo        = document.getElementById('instTipoFiltro')?.value || '';
   const soloActivos = document.getElementById('instSoloActivos')?.checked !== false;
-  tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 7);
   try {
     let url = '/api/instrumentos?';
     if (tipo) url += `tipo=${encodeURIComponent(tipo)}&`;
@@ -5465,10 +5475,10 @@ async function cargarInstrumentos() {
     const data  = await res.json();
     const items = data.instrumentos || [];
     if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Sin instrumentos</td></tr>';
+      tbody.innerHTML = _emptyTableRow(7, 'Sin instrumentos');
       return;
     }
-    _instrumentoDataMap = Object.fromEntries(items.map(i => [i.id, i]));
+    _instrumentoDataMap = _buildDataMap(items);
     const tipoColor = { ACCION:'var(--green)', RENTA_FIJA:'#4a9eff', FUTURO:'#f0a500', CAUCION:'var(--text2)', CPD:'var(--text2)', FX:'#00d4aa', OTRO:'var(--text3)' };
     tbody.innerHTML = items.map(i => `
       <tr>
@@ -5579,43 +5589,37 @@ async function guardarInstrumento() {
   const moneda  = document.getElementById('inst-moneda').value;
   const mercado = document.getElementById('inst-mercado').value.trim() || null;
   const desc    = document.getElementById('inst-descripcion').value.trim() || null;
-  if (!especie) { resEl.style.color='var(--red)'; resEl.textContent='La especie es requerida.'; return; }
+  if (!especie) { _showResultErr(resEl, 'La especie es requerida.'); return; }
   const btn = document.getElementById('instGuardarBtn');
-  const origText = btn?.textContent;
-  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
-  try {
-    let res;
-    if (id) {
-      res = await apiFetch(`/api/instrumentos/${id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descripcion: desc, mercado_principal: mercado }),
-      });
-    } else {
-      res = await apiFetch('/api/instrumentos', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ especie, tipo, moneda, mercado_principal: mercado, descripcion: desc }),
-      });
-    }
-    if (!res.ok) {
-      const err = await res.json();
-      resEl.style.color = 'var(--red)'; resEl.textContent = err.detail || 'Error al guardar';
-      return;
-    }
-    const saved = await res.json();
-    _instCurrentId = saved.id;
-    document.getElementById('inst-id').value         = saved.id;
-    document.getElementById('inst-especie').disabled = true;
-    resEl.style.color = 'var(--green)'; resEl.textContent = `Guardado. ID: ${saved.id}`;
-    await cargarInstrumentos();
-  } catch(e) { resEl.style.color='var(--red)'; resEl.textContent=e.message; }
-  finally { if (btn) { btn.disabled = false; if (origText) btn.textContent = origText; } }
+
+  await _withButtonLoading(btn, async () => {
+    try {
+      let res;
+      if (id) {
+        res = await _apiFetchJson(`/api/instrumentos/${id}`, 'PATCH',
+          { descripcion: desc, mercado_principal: mercado });
+      } else {
+        res = await _apiFetchJson('/api/instrumentos', 'POST',
+          { especie, tipo, moneda, mercado_principal: mercado, descripcion: desc });
+      }
+      if (!res.ok) {
+        const err = await res.json();
+        _showResultErr(resEl, err.detail || 'Error al guardar');
+        return;
+      }
+      const saved = await res.json();
+      _instCurrentId = saved.id;
+      document.getElementById('inst-id').value         = saved.id;
+      document.getElementById('inst-especie').disabled = true;
+      _showResultOk(resEl, `Guardado. ID: ${saved.id}`);
+      await cargarInstrumentos();
+    } catch(e) { _showResultErr(resEl, e.message); }
+  });
 }
 
 async function toggleInstrumentoActivo(id, activo) {
   try {
-    await apiFetch(`/api/instrumentos/${id}`, {
-      method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ activo }),
-    });
+    await _apiFetchJson(`/api/instrumentos/${id}`, 'PATCH', { activo });
     await cargarInstrumentos();
   } catch { await cargarInstrumentos(); }
 }
@@ -5623,9 +5627,7 @@ async function toggleInstrumentoActivo(id, activo) {
 async function guardarDetalleRentaFija(btn) {
   const resEl = document.getElementById('rfResult');
   resEl.textContent = '';
-  if (!_instCurrentId) { resEl.style.color='var(--red)'; resEl.textContent='Guardá primero el instrumento.'; return; }
-  const origText = btn?.textContent;
-  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+  if (!_instCurrentId) { _showResultErr(resEl, 'Guardá primero el instrumento.'); return; }
   const body = {
     tir_referencia:    parseFloatOrNull(document.getElementById('rf-tir').value),
     duration:          parseFloatOrNull(document.getElementById('rf-duration').value),
@@ -5638,22 +5640,19 @@ async function guardarDetalleRentaFija(btn) {
     emisor:            document.getElementById('rf-emisor').value.trim() || null,
     amortiza:          document.getElementById('rf-amortiza').checked,
   };
-  try {
-    const res = await apiFetch(`/api/instrumentos/${_instCurrentId}/renta-fija`, {
-      method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body),
-    });
-    if (!res.ok) { const e=await res.json(); resEl.style.color='var(--red)'; resEl.textContent=e.detail||'Error'; return; }
-    resEl.style.color='var(--green)'; resEl.textContent='Detalle RF guardado.';
-  } catch(e) { resEl.style.color='var(--red)'; resEl.textContent=e.message; }
-  finally { if (btn) { btn.disabled = false; if (origText) btn.textContent = origText; } }
+  await _withButtonLoading(btn, async () => {
+    try {
+      const res = await _apiFetchJson(`/api/instrumentos/${_instCurrentId}/renta-fija`, 'PUT', body);
+      if (!res.ok) { const e = await res.json(); _showResultErr(resEl, e.detail || 'Error'); return; }
+      _showResultOk(resEl, 'Detalle RF guardado.');
+    } catch(e) { _showResultErr(resEl, e.message); }
+  });
 }
 
 async function guardarDetalleFuturo(btn) {
   const resEl = document.getElementById('futResult');
   resEl.textContent = '';
-  if (!_instCurrentId) { resEl.style.color='var(--red)'; resEl.textContent='Guardá primero el instrumento.'; return; }
-  const origText = btn?.textContent;
-  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+  if (!_instCurrentId) { _showResultErr(resEl, 'Guardá primero el instrumento.'); return; }
   const body = {
     contrato:          document.getElementById('fut-contrato').value.trim() || null,
     activo_subyacente: document.getElementById('fut-subyacente').value.trim() || null,
@@ -5664,14 +5663,13 @@ async function guardarDetalleFuturo(btn) {
     tick_size:         parseFloatOrNull(document.getElementById('fut-tick').value),
     multiplicador:     parseFloat(document.getElementById('fut-multiplicador').value) || 1.0,
   };
-  try {
-    const res = await apiFetch(`/api/instrumentos/${_instCurrentId}/futuro`, {
-      method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body),
-    });
-    if (!res.ok) { const e=await res.json(); resEl.style.color='var(--red)'; resEl.textContent=e.detail||'Error'; return; }
-    resEl.style.color='var(--green)'; resEl.textContent='Detalle Futuro guardado.';
-  } catch(e) { resEl.style.color='var(--red)'; resEl.textContent=e.message; }
-  finally { if (btn) { btn.disabled = false; if (origText) btn.textContent = origText; } }
+  await _withButtonLoading(btn, async () => {
+    try {
+      const res = await _apiFetchJson(`/api/instrumentos/${_instCurrentId}/futuro`, 'PUT', body);
+      if (!res.ok) { const e = await res.json(); _showResultErr(resEl, e.detail || 'Error'); return; }
+      _showResultOk(resEl, 'Detalle Futuro guardado.');
+    } catch(e) { _showResultErr(resEl, e.message); }
+  });
 }
 
 // ── Llamados a Margen ────────────────────────────────────────────────────────
@@ -5679,12 +5677,12 @@ async function guardarDetalleFuturo(btn) {
 async function cargarLlamados(instId) {
   const tbody = document.getElementById('llamadosBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 5);
   try {
     const res   = await apiFetch(`/api/instrumentos/${instId}/llamados-margen`);
     const data  = await res.json();
     const items = data.llamados_margen || [];
-    if (!items.length) { tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Sin llamados.</td></tr>'; return; }
+    if (!items.length) { tbody.innerHTML = _emptyTableRow(5, 'Sin llamados.'); return; }
     const estadoColor = { PENDIENTE:'#f0a500', INTEGRADO:'var(--green)', VENCIDO:'var(--red)' };
     tbody.innerHTML = items.map(ll => `
       <tr>
@@ -5712,27 +5710,24 @@ function abrirModalLlamado() {
 }
 
 async function guardarLlamado(btn) {
-  const resEl   = document.getElementById('llamadoResult');
+  const resEl    = document.getElementById('llamadoResult');
   resEl.textContent = '';
   const cuentaId = parseInt(document.getElementById('lm-cuenta').value);
   const monto    = parseFloat(document.getElementById('lm-monto').value);
   const fecha    = document.getElementById('lm-fecha').value;
   const desc     = document.getElementById('lm-descripcion').value.trim() || null;
   if (!fecha || !(cuentaId > 0) || !(monto > 0)) {
-    resEl.style.color='var(--red)'; resEl.textContent='Completá fecha, cuenta y monto.'; return;
+    _showResultErr(resEl, 'Completá fecha, cuenta y monto.'); return;
   }
-  const origText = btn?.textContent;
-  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
-  try {
-    const res = await apiFetch(`/api/instrumentos/${_instCurrentId}/llamados-margen`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ cuenta_id: cuentaId, fecha, monto, descripcion: desc }),
-    });
-    if (!res.ok) { const e=await res.json(); resEl.style.color='var(--red)'; resEl.textContent=e.detail||'Error'; return; }
-    document.getElementById('modalLlamado').classList.remove('active');
-    await cargarLlamados(_instCurrentId);
-  } catch(e) { resEl.style.color='var(--red)'; resEl.textContent=e.message; }
-  finally { if (btn) { btn.disabled = false; if (origText) btn.textContent = origText; } }
+  await _withButtonLoading(btn, async () => {
+    try {
+      const res = await _apiFetchJson(`/api/instrumentos/${_instCurrentId}/llamados-margen`, 'POST',
+        { cuenta_id: cuentaId, fecha, monto, descripcion: desc });
+      if (!res.ok) { const e = await res.json(); _showResultErr(resEl, e.detail || 'Error'); return; }
+      document.getElementById('modalLlamado').classList.remove('active');
+      await cargarLlamados(_instCurrentId);
+    } catch(e) { _showResultErr(resEl, e.message); }
+  });
 }
 
 async function integrarLlamado(llamadoId) {
@@ -5763,7 +5758,7 @@ async function cargarPnl() {
   const hasta   = document.getElementById('pnlFechaHasta')?.value || '';
   const cliente = document.getElementById('pnlCliente')?.value.trim() || '';
   const especie = document.getElementById('pnlEspecie')?.value.trim() || '';
-  tbody.innerHTML = '<tr><td colspan="9" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 9);
   try {
     let url = '/api/pnl?';
     if (desde)   url += `fecha_desde=${desde}&`;
@@ -5773,7 +5768,7 @@ async function cargarPnl() {
     const res  = await apiFetch(url);
     const data = await res.json();
     const rows = data.pnl || [];
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="9" class="text-muted">Sin datos para los filtros seleccionados.</td></tr>'; return; }
+    if (!rows.length) { tbody.innerHTML = _emptyTableRow(9, 'Sin datos para los filtros seleccionados.'); return; }
     tbody.innerHTML = rows.map(r => `
       <tr>
         <td style="font-family:'IBM Plex Mono',monospace;font-size:11px">${esc(r.fecha)}</td>
@@ -5823,7 +5818,7 @@ async function abrirCierreDia() {
     `¿Ejecutar cierre de día para ${fecha}? Se calcularán P&L realizados y no realizados para todas las posiciones abiertas. La operación es idempotente (se puede repetir sin efecto doble).`,
     async () => {
       resEl.style.color='var(--text2)';
-      resEl.innerHTML='<span class="spinner-inline"></span> Procesando cierre de día...';
+      _setLoadingMessage(resEl, 'Procesando cierre de día...');
       await _cierreDiaExec(fecha, resEl);
     }
   );
@@ -5875,7 +5870,7 @@ async function cargarTcHistorico() {
   const tipo  = document.getElementById('tcTipoFiltro')?.value  || '';
   const desde = document.getElementById('tcFechaDesde')?.value  || '';
   const hasta = document.getElementById('tcFechaHasta')?.value  || '';
-  tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 5);
   try {
     let url = '/api/tipo-cambio/historico?';
     if (tipo)  url += `tipo=${tipo}&`;
@@ -5884,7 +5879,7 @@ async function cargarTcHistorico() {
     const res  = await apiFetch(url);
     const data = await res.json();
     const rows = data.tipo_cambio_historico || [];
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Sin registros para el filtro.</td></tr>'; return; }
+    if (!rows.length) { tbody.innerHTML = _emptyTableRow(5, 'Sin registros para el filtro.'); return; }
     tbody.innerHTML = rows.map(r => `
       <tr>
         <td style="font-family:'IBM Plex Mono',monospace;font-size:11px">${esc(r.fecha)}</td>
@@ -5998,13 +5993,13 @@ async function descargarReporte(tipo, fecha, umbral = null) {
 async function cargarContrapartes() {
   const tbody = document.getElementById('contrapartesBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 5);
   try {
     const res   = await apiFetch('/api/contrapartes');
     const data  = await res.json();
     const items = data.contrapartes || [];
-    if (!items.length) { tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Sin contrapartes.</td></tr>'; return; }
-    _contraparteDataMap = Object.fromEntries(items.map(c => [c.id, c]));
+    if (!items.length) { tbody.innerHTML = _emptyTableRow(5, 'Sin contrapartes.'); return; }
+    _contraparteDataMap = _buildDataMap(items);
     tbody.innerHTML = items.map(c => `
       <tr>
         <td><span class="badge-tipo" style="font-family:'IBM Plex Mono',monospace;font-size:11px">${esc(c.codigo)}</span></td>
@@ -6056,37 +6051,35 @@ async function guardarContraparte(btn) {
   const codigo = document.getElementById('cp-codigo').value.trim().toUpperCase();
   const nombre = document.getElementById('cp-nombre').value.trim();
   const tipo   = document.getElementById('cp-tipo').value;
-  if (!codigo || !nombre) { resEl.style.color='var(--red)'; resEl.textContent='Código y nombre son requeridos.'; return; }
-  const origText = btn?.textContent;
-  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
-  try {
-    let res, cpId;
-    if (id) {
-      res  = await apiFetch(`/api/contrapartes/${id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ nombre }) });
-      cpId = id;
-    } else {
-      res  = await apiFetch('/api/contrapartes', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ codigo, nombre, tipo }) });
-      if (res.ok) { const d = await res.json(); cpId = d.id; }
-    }
-    if (!res.ok) { const e=await res.json(); resEl.style.color='var(--red)'; resEl.textContent=e.detail||'Error'; return; }
-    const limValor = parseFloatOrNull(document.getElementById('cp-lim-valor').value);
-    if (cpId && limValor > 0) {
-      const moneda = document.getElementById('cp-lim-moneda').value;
-      const alerta = parseFloat(document.getElementById('cp-lim-alerta').value) || 80;
-      await apiFetch(`/api/contrapartes/${cpId}/limites`, {
-        method: 'PUT', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ moneda, limite: limValor, alerta_pct: alerta }),
-      });
-    }
-    document.getElementById('modalContraparte').classList.remove('active');
-    await cargarContrapartes();
-  } catch(e) { resEl.style.color='var(--red)'; resEl.textContent=e.message; }
-  finally { if (btn) { btn.disabled = false; if (origText) btn.textContent = origText; } }
+  if (!codigo || !nombre) { _showResultErr(resEl, 'Código y nombre son requeridos.'); return; }
+
+  await _withButtonLoading(btn, async () => {
+    try {
+      let res, cpId;
+      if (id) {
+        res  = await _apiFetchJson(`/api/contrapartes/${id}`, 'PATCH', { nombre });
+        cpId = id;
+      } else {
+        res  = await _apiFetchJson('/api/contrapartes', 'POST', { codigo, nombre, tipo });
+        if (res.ok) { const d = await res.json(); cpId = d.id; }
+      }
+      if (!res.ok) { const e = await res.json(); _showResultErr(resEl, e.detail || 'Error'); return; }
+      const limValor = parseFloatOrNull(document.getElementById('cp-lim-valor').value);
+      if (cpId && limValor > 0) {
+        const moneda = document.getElementById('cp-lim-moneda').value;
+        const alerta = parseFloat(document.getElementById('cp-lim-alerta').value) || 80;
+        await _apiFetchJson(`/api/contrapartes/${cpId}/limites`, 'PUT',
+          { moneda, limite: limValor, alerta_pct: alerta });
+      }
+      document.getElementById('modalContraparte').classList.remove('active');
+      await cargarContrapartes();
+    } catch(e) { _showResultErr(resEl, e.message); }
+  });
 }
 
 async function toggleContraparteActivo(id, activo) {
   try {
-    await apiFetch(`/api/contrapartes/${id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ activo }) });
+    await _apiFetchJson(`/api/contrapartes/${id}`, 'PATCH', { activo });
     await cargarContrapartes();
   } catch { await cargarContrapartes(); }
 }
@@ -6098,13 +6091,13 @@ async function toggleContraparteActivo(id, activo) {
 async function cargarLimites() {
   const tbody = document.getElementById('limitesBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 8);
   try {
     const res   = await apiFetch('/api/riesgo/limites');
     const data  = await res.json();
     const items = data.limites || [];
-    _limiteDataMap = Object.fromEntries(items.map(l => [l.id, l]));
-    if (!items.length) { tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Sin límites configurados.</td></tr>'; return; }
+    _limiteDataMap = _buildDataMap(items);
+    if (!items.length) { tbody.innerHTML = _emptyTableRow(8, 'Sin límites configurados.'); return; }
     tbody.innerHTML = items.map(l => `
       <tr>
         <td style="font-size:11px">${esc(l.owner_type)}${l.owner_id?` #${l.owner_id}`:''}</td>
@@ -6196,7 +6189,7 @@ async function guardarLimiteRiesgo(btn) {
 
 async function toggleLimiteActivo(id, activo) {
   try {
-    await apiFetch(`/api/riesgo/limites/${id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ activo }) });
+    await _apiFetchJson(`/api/riesgo/limites/${id}`, 'PATCH', { activo });
     await cargarLimites();
   } catch { await cargarLimites(); }
 }
@@ -6211,7 +6204,7 @@ async function cargarLiquidaciones(page = 1) {
   _liqPage = page < 1 ? 1 : page;
   const tbody = document.getElementById('liquidBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 8);
   try {
     const res  = await apiFetch(`/api/liquidaciones/pendientes?page=${_liqPage}&per_page=${LIQ_PER_PAGE}`);
     const data = await res.json();
@@ -6245,7 +6238,7 @@ async function procesarLiquidaciones() {
     'Se marcarán como liquidadas todas las ejecuciones con fecha de liquidación vencida a la fecha de hoy. Esta operación afecta el balance disponible de los clientes involucrados.',
     async () => {
       resEl.style.color='var(--text2)';
-      resEl.innerHTML='<span class="spinner-inline"></span> Procesando liquidaciones...';
+      _setLoadingMessage(resEl, 'Procesando liquidaciones...');
       await _procesarLiquidacionesExec(resEl);
     }
   );
@@ -6540,14 +6533,14 @@ async function cargarMetricasRiesgo() {
 async function cargarOperadores() {
   const tbody = document.getElementById('operadoresBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 6);
   try {
     const res = await apiFetch('/api/operadores');
     if (!res.ok) return;
     const d = await res.json();
     const ops = d.operadores || [];
     if (!ops.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Sin operadores registrados.</td></tr>';
+      tbody.innerHTML = _emptyTableRow(7, 'Sin operadores registrados.');
       return;
     }
     tbody.innerHTML = ops.map(o => `<tr data-op-id="${o.id}" data-op-nombre="${esc(o.nombre)}" data-op-desk="${esc(o.desk)}" data-op-cliente="${esc(o.cliente_codigo || '')}">
@@ -6559,7 +6552,7 @@ async function cargarOperadores() {
       <td><span style="color:${o.activo ? 'var(--green)' : 'var(--red)'};font-size:11px">${o.activo ? 'Activo' : 'Inactivo'}</span></td>
       <td><button class="btn-mini" onclick="abrirModalOperador(${o.id})">Editar</button></td>
     </tr>`).join('');
-  } catch (e) { tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Error al cargar.</td></tr>'; }
+  } catch (e) { tbody.innerHTML = _emptyTableRow(6, 'Error al cargar.'); }
 }
 
 let _editOpData = null;
@@ -6651,7 +6644,7 @@ async function cargarPnlPorDesk() {
   const tbody   = document.getElementById('pnlDeskBody');
   if (!tbody) return;
   const fecha = fechaEl?.value || new Date().toISOString().slice(0, 10);
-  tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 7);
   try {
     const res = await apiFetch(`/api/pnl/por-desk?fecha=${fecha}`);
     if (!res.ok) return;
@@ -6674,7 +6667,7 @@ async function cargarPnlPorDesk() {
         <td style="text-align:right;color:var(--text3)">${dk.n_posiciones}</td>
       </tr>`;
     }).join('');
-  } catch (e) { tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Error al cargar P&L por desk.</td></tr>'; }
+  } catch (e) { tbody.innerHTML = _emptyTableRow(7, 'Error al cargar P&L por desk.'); }
 }
 
 
@@ -6685,7 +6678,7 @@ async function cargarPnlPorDesk() {
 async function cargarPreciosHistorico() {
   const tbody = document.getElementById('preciosHistBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Cargando...</td></tr>';
+  _setTbodyLoading(tbody, 5);
   const especie    = (document.getElementById('vpFiltroEspecie')?.value || '').trim().toUpperCase();
   const tipo       = document.getElementById('vpFiltroTipo')?.value || '';
   const desde      = document.getElementById('vpFiltroDesde')?.value || '';
@@ -6700,7 +6693,7 @@ async function cargarPreciosHistorico() {
     if (!res.ok) return;
     const d = await res.json();
     const rows = d.precios || [];
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Sin resultados.</td></tr>'; return; }
+    if (!rows.length) { tbody.innerHTML = _emptyTableRow(5, 'Sin resultados.'); return; }
     const fmtP = v => Number(v).toLocaleString('es-AR', { minimumFractionDigits: 4, maximumFractionDigits: 6 });
     const tipoBadge = t => {
       const colors = { AJUSTE: '#4a9eff', CORTE_MAE: '#f0a500', CIERRE: 'var(--text3)' };
@@ -6713,7 +6706,7 @@ async function cargarPreciosHistorico() {
       <td>${tipoBadge(r.precio_tipo)}</td>
       <td style="font-size:11px;color:var(--text3)">${esc(r.fuente)}</td>
     </tr>`).join('');
-  } catch (e) { tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Error al cargar.</td></tr>'; }
+  } catch (e) { tbody.innerHTML = _emptyTableRow(5, 'Error al cargar.'); }
 }
 
 async function registrarCierreAjuste() {
