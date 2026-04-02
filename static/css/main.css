@@ -2855,6 +2855,51 @@ html.theme-aero .notif-dropdown {
   outline-color: var(--red);
 }
 
+/* ── BUTTON TRANSITIONS & FOCUS RINGS (M26) ──────────────────────────────── */
+/* Smooth active-state press feedback */
+.btn-nueva-orden,
+.btn-cerrar,
+.btn-refresh,
+.btn-secondary,
+.btn-theme-toggle,
+.btn-logout,
+.btn-hamburger {
+  transition: background 0.08s ease, box-shadow 0.08s ease, border-color 0.08s ease;
+}
+
+/* Visible focus ring for keyboard navigation (not mouse clicks) */
+.btn-nueva-orden:focus-visible,
+.btn-cerrar:focus-visible,
+.btn-refresh:focus-visible,
+.btn-secondary:focus-visible,
+.btn-theme-toggle:focus-visible,
+.btn-logout:focus-visible,
+.btn-hamburger:focus-visible,
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Toast retry button (M23) */
+.toast-retry {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 2px 8px;
+  font-size: 11px;
+  background: rgba(0,0,0,0.12);
+  border: 1px solid rgba(0,0,0,0.2);
+  border-radius: 2px;
+  cursor: pointer;
+  color: inherit;
+}
+.toast-retry:hover { background: rgba(0,0,0,0.2); }
+
+/* Persistent toast — no auto-dismiss, subtle pulsing border (M18) */
+.toast-persist { box-shadow: 0 0 0 2px var(--red) !important; }
+
 /* ── RESPONSIVE — ≤ 375px (small phone) (A3) ─────────────────────────────── */
 @media (max-width: 375px) {
   /* Brand: hide icon, keep only "Rueda" */

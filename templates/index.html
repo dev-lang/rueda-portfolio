@@ -47,7 +47,7 @@
 
   <div class="topbar-actions">
     <span class="topbar-user-label" id="topbar-user" title="Usuario activo"></span>
-    <button class="btn-theme-toggle" id="btnThemeToggle" title="Cambiar tema visual" data-action="toggle-theme">
+    <button class="btn-theme-toggle" id="btnThemeToggle" title="Cambiar tema visual" aria-label="Cambiar tema visual" data-action="toggle-theme">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
         <circle cx="12" cy="12" r="4"></circle>
         <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
@@ -254,7 +254,7 @@
         </div>
 
         <div class="table-wrap">
-          <table class="orders-table" id="ordersTable">
+          <table class="orders-table" id="ordersTable" aria-label="Tabla de órdenes">
             <thead>
               <tr>
                 <th>Tipo</th>
@@ -371,7 +371,7 @@
 
         <div id="blotterViewTabla">
         <div class="table-wrap">
-          <table class="orders-table" id="blotterTable">
+          <table class="orders-table" id="blotterTable" aria-label="Blotter de operaciones">
             <thead>
               <tr>
                 <th>Hora</th>
@@ -454,7 +454,7 @@
         </div>
 
         <div class="table-wrap">
-          <table class="orders-table" id="posicionesTable">
+          <table class="orders-table" id="posicionesTable" aria-label="Tabla de posiciones">
             <thead>
               <tr>
                 <th>Cliente</th>
@@ -2744,41 +2744,41 @@
     <div class="modal-body orden-modal-body">
       <div class="form-grid">
         <div class="form-group">
-          <label title="LIMC = Compra Límite · LIMV = Venta Límite">Tipo Orden</label>
+          <label for="f-tipo" title="LIMC = Compra Límite · LIMV = Venta Límite">Tipo Orden</label>
           <select id="f-tipo">
             <option value="LIMC">LIMC — Compra Límite</option>
             <option value="LIMV">LIMV — Venta Límite</option>
           </select>
         </div>
         <div class="form-group">
-          <label title="Ticker del instrumento. Ej: GGAL, MOLI, TX24, AL30D">Especie</label>
+          <label for="f-especie" title="Ticker del instrumento. Ej: GGAL, MOLI, TX24, AL30D">Especie</label>
           <input type="text" id="f-especie" placeholder="GGAL, MOLI, TX24..." list="especies-list" autocomplete="off">
         </div>
         <div class="form-group">
-          <label title="ARP = Peso Argentino · USD = Dólar">Moneda</label>
+          <label for="f-moneda" title="ARP = Peso Argentino · USD = Dólar">Moneda</label>
           <select id="f-moneda">
             <option value="ARP">ARP — Peso</option>
             <option value="USD">USD — Dólar</option>
           </select>
         </div>
         <div class="form-group">
-          <label title="LIMITE = precio fijo · MERCADO = ejecuta al mejor precio disponible">Tipo Precio</label>
+          <label for="f-tipo-precio" title="LIMITE = precio fijo · MERCADO = ejecuta al mejor precio disponible">Tipo Precio</label>
           <select id="f-tipo-precio">
             <option value="LIMITE">LIMITE — Precio fijo</option>
             <option value="MERCADO">MERCADO — A mercado</option>
           </select>
         </div>
         <div class="form-group" id="f-precio-group">
-          <label title="Precio máximo de compra (LIMC) o mínimo de venta (LIMV)">Precio Límite</label>
+          <label for="f-precio" title="Precio máximo de compra (LIMC) o mínimo de venta (LIMV)">Precio Límite</label>
           <input type="number" id="f-precio" placeholder="0.00" step="0.01">
         </div>
         <div class="form-group">
-          <label title="Número total de nominales / lotes a operar">Cantidad Total</label>
+          <label for="f-cantidad" title="Número total de nominales / lotes a operar">Cantidad Total</label>
           <input type="number" id="f-cantidad" placeholder="0">
           <span id="f-importe-preview" style="font-size:11px;color:var(--text2);font-family:var(--font-mono);margin-top:3px;display:block">Importe est.: —</span>
         </div>
         <div class="form-group">
-          <label title="DAY = hasta fin del día · IOC = inmediata o cancela parcial · FOK = todo o nada · GTD = hasta fecha">TIF</label>
+          <label for="f-tif" title="DAY = hasta fin del día · IOC = inmediata o cancela parcial · FOK = todo o nada · GTD = hasta fecha">TIF</label>
           <select id="f-tif">
             <option value="DAY">DAY — Fin del día</option>
             <option value="IOC">IOC — Inmediata o Cancela</option>
@@ -2787,11 +2787,11 @@
           </select>
         </div>
         <div class="form-group" id="f-fecha-exp-group" style="display:none">
-          <label>Fecha Expiración (GTD)</label>
+          <label for="f-fecha-exp">Fecha Expiración (GTD)</label>
           <input type="date" id="f-fecha-exp">
         </div>
         <div class="form-group">
-          <label title="Cliente al que se imputa la orden">Cliente</label>
+          <label for="f-cliente" title="Cliente al que se imputa la orden">Cliente</label>
           <select id="f-cliente">
             <option value="STD">STD — Cartera Propia STD</option>
           </select>

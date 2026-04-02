@@ -12,7 +12,12 @@ const LIQ_PER_PAGE         = 50;    // rows per page for liquidaciones
  */
 const TOAST_MAX = 4;  // max simultaneous toasts before evicting the oldest
 
-function showToast(msg, type = 'ok', title = '') {
+/**
+ * showToast(msg, type, title, opts)
+ *  opts.persist  — if true, toast stays until manually closed (M18)
+ *  opts.onRetry  — if provided, shows a "Reintentar" button (M23)
+ */
+function showToast(msg, type = 'ok', title = '', opts = {}) {
   const container = document.getElementById('toast-container');
   if (!container) { alert(msg); return; }
 
@@ -20,25 +25,34 @@ function showToast(msg, type = 'ok', title = '') {
   const existing = container.querySelectorAll('.toast');
   if (existing.length >= TOAST_MAX) existing[0].remove();
 
-  const icons = { ok: '✓', error: '✗', warn: '⚠' };
+  const icons  = { ok: '✓', error: '✗', warn: '⚠' };
   const titles = { ok: title || 'Listo', error: title || 'Error', warn: title || 'Atención' };
+  const retryBtn = opts.onRetry
+    ? `<button class="toast-retry" aria-label="Reintentar">Reintentar</button>`
+    : '';
 
   const el = document.createElement('div');
-  el.className = `toast toast-${type}`;
+  el.className = `toast toast-${type}${opts.persist ? ' toast-persist' : ''}`;
   el.innerHTML = `
     <span class="toast-icon">${icons[type]}</span>
     <div class="toast-body">
       <div class="toast-title">${titles[type]}</div>
       <div class="toast-msg">${esc(msg)}</div>
+      ${retryBtn}
     </div>
     <button class="toast-close" data-action="close-toast" aria-label="Cerrar notificación">×</button>
   `;
+  if (opts.onRetry) {
+    el.querySelector('.toast-retry').addEventListener('click', () => { el.remove(); opts.onRetry(); });
+  }
   container.appendChild(el);
 
-  setTimeout(() => {
-    el.classList.add('toast-exit');
-    el.addEventListener('animationend', () => el.remove());
-  }, type === 'error' ? TOAST_DURATION_ERROR : TOAST_DURATION_OK);
+  if (!opts.persist) {
+    setTimeout(() => {
+      el.classList.add('toast-exit');
+      el.addEventListener('animationend', () => el.remove(), { once: true });
+    }, type === 'error' ? TOAST_DURATION_ERROR : TOAST_DURATION_OK);
+  }
 }
 
 // ── AUTH / SESSION ─────────────────────────────────────────────────────────
@@ -59,6 +73,13 @@ async function apiFetch(url, opts = {}) {
 }
 
 async function logout() {
+  // Detach all socket listeners before redirecting to prevent listener duplication
+  // if the session is later reused within the same page lifetime
+  if (state.socket) {
+    state.socket.off();
+    state.socket.disconnect();
+    state.socket = null;
+  }
   try {
     await apiFetch('/api/auth/logout', { method: 'POST' });
   } catch {}
@@ -104,6 +125,31 @@ function _apiErrMsg(res, result, fallback = 'Error inesperado.') {
   if (detail?.mensaje) return detail.mensaje;
   if (typeof detail === 'string') return detail;
   return fallback;
+}
+
+// ── UNSAVED CHANGES GUARD (M25) ───────────────────────────────────────────
+/**
+ * Mark a modal as "dirty" (has unsaved user input).
+ * Call _watchModalDirty(modalId) after opening a form modal.
+ * The close handler will ask for confirmation if there are unsaved changes.
+ */
+function _watchModalDirty(modalId) {
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+  modal.removeAttribute('data-dirty');
+  const inputs = modal.querySelectorAll('input:not([type=hidden]), select, textarea');
+  const mark = () => modal.setAttribute('data-dirty', '1');
+  inputs.forEach(el => el.addEventListener('input', mark, { once: true }));
+}
+
+function _checkModalDirty(modalId, onConfirm) {
+  const modal = document.getElementById(modalId);
+  if (!modal || !modal.hasAttribute('data-dirty')) { onConfirm(); return; }
+  _confirmar(
+    'Cambios sin guardar',
+    'Tenés cambios que no se guardaron. ¿Cerrar de todas formas?',
+    () => { modal.removeAttribute('data-dirty'); onConfirm(); }
+  );
 }
 
 // ── MODAL FOCUS MANAGER (C3) ───────────────────────────────────────────────
@@ -1267,10 +1313,19 @@ function renderOrderbook(data) {
 }
 
 function setPrecioDesdeOB(precio) {
+  // If the order modal is not open, open it first
+  const modal = document.getElementById('modalNuevaOrden');
+  if (modal && !modal.classList.contains('active')) abrirModalOrden();
+
   const inp = document.getElementById('f-precio');
+  if (!inp) return;
+  // Ensure precio límite field is visible
+  const tipoPrecio = document.getElementById('f-tipo-precio');
+  if (tipoPrecio && tipoPrecio.value === 'MERCADO') { tipoPrecio.value = 'LIMITE'; togglePrecioLimite(); }
   inp.value = precio;
   inp.classList.add('ob-filled');
   setTimeout(() => inp.classList.remove('ob-filled'), 1000);
+  inp.focus();
   _actualizarImporte();
 }
 
@@ -1396,19 +1451,27 @@ async function enviarNuevaOrden() {
 function togglePrecioLimite() {
   const tipo = document.getElementById('f-tipo-precio').value;
   const grupo = document.getElementById('f-precio-group');
-  if (grupo) grupo.style.display = tipo === 'MERCADO' ? 'none' : '';
+  if (!grupo) return;
+  const hide = tipo === 'MERCADO';
+  grupo.style.display = hide ? 'none' : '';
+  if (hide) { const f = document.getElementById('f-precio'); if (f) f.value = ''; }
 }
 
 function toggleFechaExp() {
   const tif = document.getElementById('f-tif').value;
   const grupo = document.getElementById('f-fecha-exp-group');
-  if (grupo) grupo.style.display = tif === 'GTD' ? '' : 'none';
+  if (!grupo) return;
+  const show = tif === 'GTD';
+  grupo.style.display = show ? '' : 'none';
+  if (!show) { const f = document.getElementById('f-fecha-exp'); if (f) f.value = ''; }
 }
 
 function togglePrecioActivacion() {
   const tipo = document.getElementById('f-tipo-activacion').value;
   const grupo = document.getElementById('f-precio-activacion-group');
-  if (grupo) grupo.style.display = tipo ? '' : 'none';
+  if (!grupo) return;
+  grupo.style.display = tipo ? '' : 'none';
+  if (!tipo) { const f = document.getElementById('f-precio-activacion'); if (f) f.value = ''; }
 }
 
 function toggleOpcionesAvanzadas() {
@@ -1528,12 +1591,23 @@ function initTableSort() {
 }
 
 // ── BÚSQUEDA GLOBAL ────────────────────────────────────────────────────────
+// Maps each view to the tbody it should search
+const _SEARCH_TBODY = {
+  ordenes:       'ordersBody',
+  blotter:       'blotterBody',
+  transacciones: 'txBody',
+  posiciones:    'posicionesBody',
+  precios:       'preciosBody',
+};
+
 let _searchTimer = null;
 document.getElementById('globalSearch').addEventListener('input', function() {
   clearTimeout(_searchTimer);
   const q = this.value.toLowerCase();
   _searchTimer = setTimeout(() => {
-    document.querySelectorAll('#ordersBody tr[data-id]').forEach(row => {
+    const tbodyId = _SEARCH_TBODY[state.currentView];
+    if (!tbodyId) return;
+    document.querySelectorAll(`#${tbodyId} tr[data-id], #${tbodyId} tr[data-especie]`).forEach(row => {
       row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
     });
   }, 180);
@@ -4242,11 +4316,15 @@ function abrirModalUsuario(usuario = null) {
     document.getElementById('u-pass-label').textContent = 'Contraseña';
   }
   modal.classList.add('active');
+  _watchModalDirty('modalUsuario');
 }
 
 function cerrarModalUsuario(e) {
   if (e.target === document.getElementById('modalUsuario')) {
-    document.getElementById('modalUsuario').classList.remove('active');
+    _checkModalDirty('modalUsuario', () => {
+      document.getElementById('modalUsuario').classList.remove('active');
+      _popModalFocus();
+    });
   }
 }
 
@@ -4374,11 +4452,15 @@ function abrirModalCliente(cliente = null) {
     document.getElementById('c-codigo').disabled   = false;
   }
   modal.classList.add('active');
+  _watchModalDirty('modalCliente');
 }
 
 function cerrarModalCliente(e) {
   if (e.target === document.getElementById('modalCliente')) {
-    document.getElementById('modalCliente').classList.remove('active');
+    _checkModalDirty('modalCliente', () => {
+      document.getElementById('modalCliente').classList.remove('active');
+      _popModalFocus();
+    });
   }
 }
 
@@ -4757,7 +4839,10 @@ function abrirModalBot(bot = null) {
 
 function cerrarModalBot(e) {
   if (e.target === document.getElementById('modalBot')) {
-    document.getElementById('modalBot').classList.remove('active');
+    _checkModalDirty('modalBot', () => {
+      document.getElementById('modalBot').classList.remove('active');
+      _popModalFocus();
+    });
   }
 }
 
@@ -4934,22 +5019,22 @@ async function resetDemoData() {
 }
 
 async function _resetDemoDataExec(resEl) {
-  resEl.textContent = 'Eliminando...';
+  resEl.innerHTML = '<span class="spinner-inline"></span> Eliminando... (puede demorar unos segundos)';
   resEl.style.color = 'var(--text3)';
   try {
     const res = await apiFetch('/api/admin/demo-reset', { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      resEl.textContent = 'Error: ' + (err.detail || res.status);
+      resEl.innerHTML = 'Error: ' + esc(err.detail || res.status);
       resEl.style.color = 'var(--red)';
       return;
     }
     const data = await res.json();
-    resEl.textContent = data.mensaje;
+    resEl.innerHTML = esc(data.mensaje);
     resEl.style.color = 'var(--green)';
-    showToast('Datos operativos eliminados correctamente.', 'success');
+    showToast('Datos operativos eliminados correctamente.', 'ok');
   } catch(e) {
-    resEl.textContent = 'Error: ' + e.message;
+    resEl.innerHTML = 'Error: ' + esc(e.message);
     resEl.style.color = 'var(--red)';
   }
 }
@@ -5698,7 +5783,8 @@ async function abrirCierreDia() {
     'Cierre de día',
     `¿Ejecutar cierre de día para ${fecha}? La operación es idempotente.`,
     async () => {
-      resEl.style.color='var(--text2)'; resEl.textContent='Procesando...';
+      resEl.style.color='var(--text2)';
+      resEl.innerHTML='<span class="spinner-inline"></span> Procesando cierre de día...';
       await _cierreDiaExec(fecha, resEl);
     }
   );
@@ -5708,10 +5794,10 @@ async function _cierreDiaExec(fecha, resEl) {
   try {
     const res  = await apiFetch(`/api/pnl/cerrar-dia?fecha=${fecha}`, { method: 'POST' });
     const data = await res.json();
-    if (!res.ok) { resEl.style.color='var(--red)'; resEl.textContent=data.detail||'Error'; return; }
-    resEl.style.color='var(--green)'; resEl.textContent=data.mensaje||`Cierre procesado.`;
+    if (!res.ok) { resEl.style.color='var(--red)'; resEl.innerHTML=esc(data.detail||'Error'); return; }
+    resEl.style.color='var(--green)'; resEl.innerHTML=esc(data.mensaje||'Cierre procesado.');
     await cargarPnl();
-  } catch(e) { resEl.style.color='var(--red)'; resEl.textContent=e.message; }
+  } catch(e) { resEl.style.color='var(--red)'; resEl.innerHTML=esc(e.message); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -6119,7 +6205,8 @@ async function procesarLiquidaciones() {
     'Procesar liquidaciones EOD',
     '¿Procesar el batch de liquidaciones de fin de día? Se marcarán como liquidadas todas las ejecuciones con fecha de liquidación vencida.',
     async () => {
-      resEl.style.color='var(--text2)'; resEl.textContent='Procesando...';
+      resEl.style.color='var(--text2)';
+      resEl.innerHTML='<span class="spinner-inline"></span> Procesando liquidaciones...';
       await _procesarLiquidacionesExec(resEl);
     }
   );
@@ -6129,10 +6216,10 @@ async function _procesarLiquidacionesExec(resEl) {
   try {
     const res  = await apiFetch('/api/liquidaciones/procesar', { method: 'POST' });
     const data = await res.json();
-    if (!res.ok) { resEl.style.color='var(--red)'; resEl.textContent=data.detail||'Error'; return; }
-    resEl.style.color='var(--green)'; resEl.textContent=data.mensaje||`${data.liquidadas} liquidadas.`;
+    if (!res.ok) { resEl.style.color='var(--red)'; resEl.innerHTML=esc(data.detail||'Error'); return; }
+    resEl.style.color='var(--green)'; resEl.innerHTML=esc(data.mensaje||`${data.liquidadas} liquidadas.`);
     await cargarLiquidaciones();
-  } catch(e) { resEl.style.color='var(--red)'; resEl.textContent=e.message; }
+  } catch(e) { resEl.style.color='var(--red)'; resEl.innerHTML=esc(e.message); }
 }
 
 
