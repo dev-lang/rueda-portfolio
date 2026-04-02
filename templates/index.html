@@ -1,0 +1,3004 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rueda Portfolio — Estado de Órdenes</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/css/fonts.css">
+<script src="/static/js/socket.io.min.js"></script>
+<script src="/static/js/lightweight-charts.standalone.production.js"></script>
+<link rel="stylesheet" href="/static/css/main.css">
+<link rel="stylesheet" href="/static/css/views.css">
+<script src="/static/js/theme-init.js"></script>
+</head>
+<body>
+
+<!-- ── TOPBAR ───────────────────────────────────────────────── -->
+<header class="topbar">
+  <button class="btn-hamburger" id="btnHamburger" data-action="toggle-sidebar" title="Menú" aria-label="Abrir menú lateral">
+    <span></span><span></span><span></span>
+  </button>
+
+  <div class="topbar-brand">
+    <div class="brand-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+        <polyline points="16 7 22 7 22 13"></polyline>
+      </svg>
+    </div>
+    <span class="brand-name">Rueda Portfolio</span>
+    <span class="brand-version">v2.0.0</span>
+    <span class="topbar-ws-dot dot-red" id="topbar-ws-dot" title="WebSocket: desconectado"></span>
+  </div>
+
+  <nav class="topbar-nav">
+    <a class="nav-item active" data-view="home" title="Dashboard (1)">Dashboard</a>
+    <a class="nav-item" data-view="ordenes" title="Estado de Órdenes (2)">Estado de Órdenes</a>
+    <a class="nav-item" data-view="blotter" title="Blotter (3)">Blotter</a>
+    <a class="nav-item" data-view="posiciones" title="Posiciones (4)">Posiciones</a>
+    <a class="nav-item" data-view="transacciones" title="Transacciones (5)">Transacciones</a>
+    <a class="nav-item" data-view="informes" title="Informes (6)">Informes</a>
+    <a class="nav-item" data-view="utilitarios" title="Utilitarios (7)">Utilitarios</a>
+    <a class="nav-item" data-view="mercado">Mercado</a>
+    <a class="nav-item admin-only" data-view="admin" style="display:none">Admin</a>
+  </nav>
+
+  <div class="topbar-actions">
+    <span class="topbar-user-label" id="topbar-user" title="Usuario activo"></span>
+    <button class="btn-theme-toggle" id="btnThemeToggle" title="Cambiar tema visual" data-action="toggle-theme">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+        <circle cx="12" cy="12" r="4"></circle>
+        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+      </svg>
+      Tema
+    </button>
+    <button class="btn-nueva-orden" data-action="nueva-orden" title="Nueva Orden (N)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+      Nueva Orden
+    </button>
+    <div class="topbar-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+        <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input type="text" placeholder="Buscar en Órdenes... (Ctrl+K)" id="globalSearch">
+    </div>
+    <button class="btn-notif-bell" id="btnNotifBell" data-action="abrir-notif" title="Notificaciones del sistema" aria-label="Notificaciones" aria-haspopup="true" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+      </svg>
+      <span class="notif-badge hidden" id="notifBadge" aria-live="polite">0</span>
+    </button>
+
+    <!-- Notification dropdown (toggled by abrirNotifPanel) -->
+    <div class="notif-dropdown" id="notifDropdown" role="dialog" aria-label="Notificaciones del sistema">
+      <div class="notif-dropdown-header">
+        <span>Notificaciones</span>
+        <button class="btn-clear" style="background:none;border:none;color:rgba(255,255,255,0.7);font-size:10px;cursor:pointer;margin-right:8px" data-action="limpiar-notif" aria-label="Limpiar notificaciones">Limpiar</button>
+        <button data-action="cerrar-notif" aria-label="Cerrar panel de notificaciones">×</button>
+      </div>
+      <div class="notif-dropdown-body" id="notifDropdownBody" aria-live="polite">
+        <div class="notif-placeholder">Cargando notificaciones...</div>
+      </div>
+    </div>
+
+    <button class="btn-logout" data-action="logout" title="Cerrar sesión" aria-label="Cerrar sesión">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+        <polyline points="16 17 21 12 16 7"></polyline>
+        <line x1="21" y1="12" x2="9" y2="12"></line>
+      </svg>
+      Salir
+    </button>
+  </div>
+</header>
+
+<!-- ── MAIN LAYOUT ──────────────────────────────────────────── -->
+<div class="layout">
+
+  <!-- SIDEBAR OVERLAY (mobile) -->
+  <div class="sidebar-overlay" id="sidebarOverlay" data-action="toggle-sidebar" role="button" aria-label="Cerrar menú lateral" tabindex="-1"></div>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="mainSidebar">
+
+    <!-- Nav duplicada para drawer (visible solo en ≤1024px) -->
+    <div class="sidebar-section sidebar-nav-section">
+      <div class="sidebar-label">Navegación</div>
+      <a class="sidebar-nav-item nav-item" data-view="home">Dashboard</a>
+      <a class="sidebar-nav-item nav-item" data-view="ordenes">Estado de Órdenes</a>
+      <a class="sidebar-nav-item nav-item" data-view="blotter">Blotter</a>
+      <a class="sidebar-nav-item nav-item" data-view="posiciones">Posiciones</a>
+      <a class="sidebar-nav-item nav-item" data-view="transacciones">Transacciones</a>
+      <a class="sidebar-nav-item nav-item" data-view="informes">Informes</a>
+      <a class="sidebar-nav-item nav-item" data-view="utilitarios">Utilitarios</a>
+      <a class="sidebar-nav-item nav-item" data-view="mercado">Mercado</a>
+      <a class="sidebar-nav-item nav-item admin-only" data-view="admin" style="display:none">Admin</a>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Servicios</div>
+      <div class="service-item">
+        <span class="dot dot-green" id="dot-ruedahub" title="Rueda HUB: Conectado" aria-label="Rueda HUB: Conectado"></span>
+        <span>Rueda HUB</span>
+      </div>
+      <div class="service-item">
+        <span class="dot dot-green" id="dot-rofex" title="ROFEX: Conectado" aria-label="ROFEX: Conectado"></span>
+        <span>ROFEX</span>
+      </div>
+      <div class="service-item">
+        <span class="dot dot-green" id="dot-maeonl" title="MAEONL: Conectado" aria-label="MAEONL: Conectado"></span>
+        <span>MAEONL</span>
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Resumen</div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-total">—</div>
+        <div class="stat-label">Total órdenes</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value green" id="stat-ejecutadas">—</div>
+        <div class="stat-label">Ejecutadas</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value orange" id="stat-pendientes">—</div>
+        <div class="stat-label">Pendientes</div>
+      </div>
+      <div class="stat-box" style="cursor:pointer" data-action="filtrar-estado-red" role="button" tabindex="0" title="Ver órdenes con error">
+        <div class="stat-value red" id="stat-errores">—</div>
+        <div class="stat-label">Con error</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- CONTENT -->
+  <main class="content" role="main" aria-label="Contenido principal">
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!--  VISTA: HOME DASHBOARD                                    -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div id="view-home" class="view-section active">
+      <div class="view-heading">Dashboard</div>
+
+      <section class="panel">
+        <div class="panel-header"><div class="panel-title">Resumen del Portfolio</div></div>
+        <div class="kpi-grid" id="homeKpiGrid" style="padding:10px 12px">
+          <div class="kpi-card"><div class="kpi-value" id="h-valor-cartera">—</div><div class="kpi-label">Valor Cartera (ARP)</div></div>
+          <div class="kpi-card" id="h-card-pnl-nr"><div class="kpi-value" id="h-pnl-no-realizado">—</div><div class="kpi-label">P&L No Realizado</div><div class="kpi-sparkline" id="sparkline-pnl-nr"></div></div>
+          <div class="kpi-card" id="h-card-pnl-r"><div class="kpi-value" id="h-pnl-realizado">—</div><div class="kpi-label">P&L Realizado Hoy</div><div class="kpi-sparkline" id="sparkline-pnl-r"></div></div>
+          <div class="kpi-card orange"><div class="kpi-value" id="h-ordenes-pendientes">—</div><div class="kpi-label">Órdenes Pendientes</div></div>
+          <div class="kpi-card red"><div class="kpi-value" id="h-ordenes-error">—</div><div class="kpi-label">Órdenes con Error</div></div>
+          <div class="kpi-card accent"><div class="kpi-value" id="h-fills-hoy">—</div><div class="kpi-label">Fills Hoy</div></div>
+        </div>
+      </section>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+        <section class="panel">
+          <div class="panel-header"><div class="panel-title">Tipo de Cambio (referencia)</div></div>
+          <div style="padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:8px" id="homeTcGrid">
+            <div class="kpi-card"><div class="kpi-value" id="h-tc-mep">—</div><div class="kpi-label">MEP (USD/ARP)</div></div>
+            <div class="kpi-card"><div class="kpi-value" id="h-tc-ccl">—</div><div class="kpi-label">CCL (USD/ARP)</div></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header"><div class="panel-title">Alertas de Riesgo</div></div>
+          <div id="homeRiesgoAlerts" style="padding:10px 14px;min-height:60px">
+            <div style="color:var(--text3);font-size:12px">Cargando...</div>
+          </div>
+        </section>
+      </div>
+    </div><!-- /view-home -->
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!--  VISTA: ESTADO DE ÓRDENES                                 -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div id="view-ordenes" class="view-section">
+      <div class="view-heading">Estado de Órdenes</div>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="pulse-dot"></span>
+            Estado de Órdenes
+            <span class="live-badge">LIVE</span>
+          </div>
+        </div>
+        <div class="panel-filters-bar">
+          <div class="filter-group">
+            <label for="filtroCliente">Cliente</label>
+            <select id="filtroCliente">
+              <option value="Todos">Todos</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="filtroEspecie">Especie</label>
+            <select id="filtroEspecie">
+              <option value="Todos">Todos</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="filtroEstado">Estado</label>
+            <select id="filtroEstado">
+              <option value="">Todos</option>
+              <option value="green">Ejecutadas</option>
+              <option value="orange">Pendientes</option>
+              <option value="red">Con Error / Canceladas</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="filtroFechaDesde">Desde</label>
+            <input type="date" id="filtroFechaDesde">
+          </div>
+          <div class="filter-group">
+            <label for="filtroFechaHasta">Hasta</label>
+            <input type="date" id="filtroFechaHasta">
+          </div>
+          <button class="btn-refresh" data-action="cargar-ordenes" title="Actualizar" aria-label="Actualizar órdenes">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+          </button>
+          <div class="qf-bar" id="ordenes-qf-bar">
+            <button class="qf-btn qf-active" data-qf="todos"      data-action="qf-ordenes">Todos</button>
+            <button class="qf-btn"            data-qf="pendientes" data-action="qf-ordenes">Pendientes</button>
+            <button class="qf-btn"            data-qf="ejecutadas" data-action="qf-ordenes">Ejecutadas</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="orders-table" id="ordersTable">
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>Nro. Orden</th>
+                <th>Fecha</th>
+                <th>Cliente</th>
+                <th>Razón Social</th>
+                <th>Especie</th>
+                <th>Moneda</th>
+                <th>Precio Límite</th>
+                <th>Progreso</th>
+                <th>Ejecutado/Total</th>
+                <th>Precio Prom.</th>
+                <th>Instancia</th>
+              </tr>
+            </thead>
+            <tbody id="ordersBody">
+              <tr class="loading-row"><td colspan="12">
+                <div class="spinner"></div> Cargando órdenes...
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="panel-footer">
+          <span id="paginationInfo">—</span>
+          <div class="pagination" id="paginationControls"></div>
+          <button class="btn-refresh" data-action="exportar-ordenes-csv" title="Exportar tabla a CSV" aria-label="Exportar órdenes a CSV">⬇ CSV</button>
+        </div>
+      </section>
+
+      <section class="panel panel-notif">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+            Notificaciones del Sistema
+          </div>
+          <button class="btn-clear" data-action="limpiar-notif">Limpiar</button>
+        </div>
+        <div class="notif-log" id="notifLog">
+          <div class="notif-placeholder">Cargando notificaciones...</div>
+        </div>
+      </section>
+
+    </div><!-- /view-ordenes -->
+
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!--  VISTA: BLOTTER DEL DÍA                                   -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div id="view-blotter" class="view-section">
+      <div class="view-heading">Blotter del Día</div>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="pulse-dot"></span>
+            Operaciones del Día
+            <span class="live-badge">LIVE</span>
+          </div>
+        </div>
+        <div class="panel-filters-bar">
+          <div class="filter-group">
+            <label for="blotterFecha">Fecha</label>
+            <input type="date" id="blotterFecha">
+          </div>
+          <div class="filter-group">
+            <label for="blotterOperador">Operador</label>
+            <select id="blotterOperador">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="blotterEspecieFiltro">Especie</label>
+            <input type="text" id="blotterEspecieFiltro" placeholder="GGAL..." style="width:80px;text-transform:uppercase">
+          </div>
+          <div class="filter-group">
+            <label for="blotterDesk">Desk</label>
+            <select id="blotterDesk">
+              <option value="">Todos</option>
+              <option value="ACCIONES">Acciones</option>
+              <option value="RENTA_FIJA">Renta Fija</option>
+              <option value="DERIVADOS">Derivados</option>
+              <option value="FCI">FCI</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="blotterEstado">Estado</label>
+            <select id="blotterEstado">
+              <option value="">Todos</option>
+              <option value="green">Ejecutadas</option>
+              <option value="orange">Pendientes</option>
+              <option value="red">Error/Canceladas</option>
+            </select>
+          </div>
+          <button class="btn-refresh" data-action="cargar-blotter" title="Actualizar" aria-label="Actualizar blotter">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+          </button>
+          <div class="blotter-view-toggle">
+            <button id="btnBlotterTabla" class="blotter-toggle-btn active" data-action="blotter-view" data-view-mode="tabla" title="Vista tabla" aria-label="Vista tabla">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="1"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+            </button>
+            <button id="btnBlotterTimeline" class="blotter-toggle-btn" data-action="blotter-view" data-view-mode="timeline" title="Vista timeline" aria-label="Vista timeline">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="12" y1="2" x2="12" y2="22"></line><circle cx="12" cy="6" r="2" fill="currentColor"></circle><circle cx="12" cy="12" r="2" fill="currentColor"></circle><circle cx="12" cy="18" r="2" fill="currentColor"></circle><line x1="12" y1="6" x2="20" y2="6"></line><line x1="12" y1="12" x2="20" y2="12"></line><line x1="12" y1="18" x2="20" y2="18"></line></svg>
+            </button>
+          </div>
+        </div>
+
+        <div id="blotterViewTabla">
+        <div class="table-wrap">
+          <table class="orders-table" id="blotterTable">
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>Tipo</th>
+                <th>Nro. Orden</th>
+                <th>Operador</th>
+                <th>Desk</th>
+                <th>Cliente</th>
+                <th>Especie</th>
+                <th>Moneda</th>
+                <th>Precio</th>
+                <th>TIF</th>
+                <th>Progreso</th>
+                <th>Ejecutado/Total</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody id="blotterBody">
+              <tr class="loading-row"><td colspan="13">
+                <div class="spinner"></div> Cargando blotter...
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+        </div><!-- /blotterViewTabla -->
+
+        <div id="blotterViewTimeline" style="display:none;padding:12px 14px;overflow-x:auto">
+          <div id="blotterTimelineBody" style="min-width:600px"></div>
+        </div>
+
+        <div class="panel-footer">
+          <span id="blotterInfo">—</span>
+        </div>
+      </section>
+    </div><!-- /view-blotter -->
+
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!--  VISTA: POSICIONES                                        -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div id="view-posiciones" class="view-section">
+      <div class="view-heading">Posiciones</div>
+
+      <section class="panel" id="posicionesTablePanel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="pulse-dot"></span>
+            Posiciones
+            <span class="live-badge">LIVE</span>
+          </div>
+        </div>
+        <div class="panel-filters-bar">
+          <div class="filter-group">
+            <label for="posFiltroCliente">Cliente</label>
+            <select id="posFiltroCliente">
+              <option value="Todos">Todos</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="posFiltroEspecie">Especie</label>
+            <select id="posFiltroEspecie">
+              <option value="Todos">Todos</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="posFiltroMercado">Mercado</label>
+            <select id="posFiltroMercado">
+              <option value="Todos">Todos</option>
+              <option value="DEFAULT">DEFAULT</option>
+              <option value="ROFEX">ROFEX</option>
+              <option value="MAE">MAE</option>
+            </select>
+          </div>
+          <button class="btn-refresh" data-action="cargar-posiciones" title="Actualizar" aria-label="Actualizar posiciones">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="orders-table" id="posicionesTable">
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Especie</th>
+                <th>Moneda</th>
+                <th>Mercado</th>
+                <th>Neto</th>
+                <th>Costo Prom. Compra</th>
+                <th>Precio Mercado</th>
+                <th>Var. %</th>
+                <th>P&amp;L No Real.</th>
+                <th>P&amp;L %</th>
+              </tr>
+            </thead>
+            <tbody id="posicionesBody">
+              <tr class="loading-row"><td colspan="10">
+                <div class="spinner"></div> Cargando posiciones...
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="panel-footer">
+          <span id="posicionesInfo">—</span>
+          <button id="btnToggleHeatmap" class="btn-refresh" data-action="toggle-heatmap" title="Alternar vista mapa/tabla" aria-label="Alternar vista mapa/tabla">Ver Mapa</button>
+          <button class="btn-refresh" data-action="exportar-pos-csv" title="Exportar posiciones a CSV" aria-label="Exportar posiciones a CSV">⬇ CSV</button>
+        </div>
+      </section>
+
+      <!-- ── HEATMAP DE POSICIONES ─────────────────────────────────── -->
+      <section class="panel" id="posicionesHeatmapPanel" style="display:none">
+        <div class="panel-header">
+          <div class="panel-title">Mapa de Posiciones — P&amp;L No Realizado</div>
+          <div class="panel-filters">
+            <button class="btn-refresh" data-action="toggle-heatmap">Ver Tabla</button>
+          </div>
+        </div>
+        <div class="heatmap-grid" id="heatmapGrid">
+          <p style="color:var(--text3);padding:16px;font-size:12px">Cargando...</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Precios de Mercado</div>
+          <div class="panel-filters">
+            <button class="btn-refresh" data-action="refrescar-precios" title="Actualizar desde yfinance" aria-label="Actualizar precios desde yfinance">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+              </svg>
+              Actualizar
+            </button>
+          </div>
+        </div>
+
+        <div id="preciosFeedInfo" style="font-size:11px; color:var(--text3); margin-bottom:10px;">
+          Los precios se actualizan automáticamente cada 5 min desde Yahoo Finance para acciones BYMA mapeadas.
+          Ingresá manualmente el precio de bonos (AL30D, TX24, etc.).
+        </div>
+
+        <div class="table-wrap">
+          <table class="orders-table mini-table">
+            <thead>
+              <tr>
+                <th>Especie</th>
+                <th>Precio</th>
+                <th>Var. %</th>
+                <th title="Volumen operado en el día (cantidades ejecutadas)">Vol. día</th>
+                <th title="Precio promedio ponderado por volumen del día">VWAP</th>
+                <th>Fuente</th>
+                <th>Actualizado</th>
+                <th>Historial</th>
+              </tr>
+            </thead>
+            <tbody id="preciosBody">
+              <tr><td colspan="5" class="text-muted">Sin precios cargados. Ejecutá una orden para generar posiciones y luego presioná Actualizar.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px;">
+          <div class="execute-form-title">Ingreso manual de precio (bonos y otros)</div>
+          <div class="execute-form-grid" style="max-width: 480px;">
+            <div class="form-group">
+              <label>Especie</label>
+              <input type="text" id="pm-especie" placeholder="AL30D" style="text-transform:uppercase">
+            </div>
+            <div class="form-group">
+              <label>Precio</label>
+              <input type="number" id="pm-precio" placeholder="0.00" step="0.01" min="0.01">
+            </div>
+            <div class="form-group">
+              <label>&nbsp;</label>
+              <button class="btn-nueva-orden" data-action="ingresar-precio-manual">Guardar</button>
+            </div>
+          </div>
+          <div class="execute-result" id="pmResult"></div>
+        </div>
+      </section>
+
+      <!-- ── CAJA EN TIEMPO REAL ─────────────────────────────────── -->
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Caja en Tiempo Real — Proyección</div>
+        </div>
+        <div class="panel-filters-bar">
+          <div class="filter-group">
+            <label for="cajaProjCliente">Cliente</label>
+            <select id="cajaProjCliente">
+              <option value="STD">STD</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="cajaProjMoneda">Moneda</label>
+            <select id="cajaProjMoneda">
+              <option value="ARP">ARP</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+          <button class="btn-refresh" data-action="cargar-proyeccion" title="Actualizar" aria-label="Actualizar proyección">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div id="cajaProyeccionPanel">
+          <div class="kpi-grid" id="cajaKpis">
+            <div class="kpi-card"><div class="kpi-value" id="kpi-saldo-actual">—</div><div class="kpi-label">Saldo disponible</div></div>
+            <div class="kpi-card orange"><div class="kpi-value" id="kpi-comprometido">—</div><div class="kpi-label">Comprometido en órdenes</div></div>
+            <div class="kpi-card" id="kpi-libre-card"><div class="kpi-value" id="kpi-saldo-libre">—</div><div class="kpi-label">Saldo libre proyectado</div></div>
+          </div>
+          <div id="cajaAlerta" style="display:none; margin:8px 0; padding:8px 12px; background:var(--red); color:#fff; border-radius:4px; font-size:12px; font-weight:600;">
+            ⚠ Saldo proyectado insuficiente — las órdenes pendientes superan el disponible.
+          </div>
+          <div id="cajaOrdenesDetalle" style="margin-top:12px"></div>
+        </div>
+      </section>
+
+      <!-- ── MÉTRICAS DE RIESGO DE CARTERA ─────────────────────── -->
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Métricas de Riesgo de Cartera</div>
+        </div>
+        <div class="panel-filters-bar">
+          <div class="filter-group">
+            <label>Cliente</label>
+            <select id="riesgoCartCliente">
+              <option value="STD">STD</option>
+            </select>
+          </div>
+          <button class="btn-refresh" data-action="cargar-riesgo" title="Actualizar" aria-label="Actualizar métricas de riesgo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="kpi-grid" id="riesgoKpis">
+          <div class="kpi-card accent"><div class="kpi-value" id="kpi-valor-port">—</div><div class="kpi-label">Valor Portfolio (ARP)</div></div>
+          <div class="kpi-card"><div class="kpi-value" id="kpi-duration">—</div><div class="kpi-label">Duration Ponderada</div></div>
+          <div class="kpi-card"><div class="kpi-value" id="kpi-dv01">—</div><div class="kpi-label">DV01 Total (ARP)</div></div>
+          <div class="kpi-card red"><div class="kpi-value" id="kpi-var95">—</div><div class="kpi-label">VaR 95% 1D (ARP)</div></div>
+          <div class="kpi-card"><div class="kpi-value" id="kpi-var-pct">—</div><div class="kpi-label">VaR % Portfolio</div></div>
+          <div class="kpi-card"><div class="kpi-value" id="kpi-fx-delta">—</div><div class="kpi-label">Δ FX +1% USD (ARP)</div></div>
+        </div>
+
+        <div id="riesgoDetalleTable" style="margin-top:14px"></div>
+      </section>
+
+    </div><!-- /view-posiciones -->
+
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!--  VISTA: TRANSACCIONES                                     -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div id="view-transacciones" class="view-section">
+      <div class="view-heading">Transacciones</div>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Ejecución Manual de Orden</div>
+        </div>
+
+        <div class="execute-form-wrap">
+          <div class="execute-form-title">Registrar fill — ingresá el ID numérico de la orden (visible en el detalle de la orden)</div>
+          <div class="execute-form-grid">
+            <div class="form-group">
+              <label>ID Orden</label>
+              <input type="number" id="ex-orden-id" placeholder="Ej: 3" min="1">
+            </div>
+            <div class="form-group">
+              <label>Cantidad</label>
+              <input type="number" id="ex-cantidad" placeholder="Ej: 10000" min="1">
+            </div>
+            <div class="form-group">
+              <label>Precio</label>
+              <input type="number" id="ex-precio" placeholder="Ej: 89.50" step="0.01" min="0.01">
+            </div>
+            <div class="form-group">
+              <label>Mercado</label>
+              <select id="ex-mercado">
+                <option value="DEFAULT">DEFAULT</option>
+                <option value="ROFEX">ROFEX</option>
+                <option value="MAE">MAE</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>&nbsp;</label>
+              <button class="btn-nueva-orden" data-action="ejecutar-orden-manual">Ejecutar</button>
+            </div>
+          </div>
+          <div class="execute-result" id="executeResult"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Historial de Ejecuciones</div>
+        </div>
+        <div class="panel-filters-bar">
+          <div class="filter-group">
+            <label for="txFiltroCliente">Cliente</label>
+            <select id="txFiltroCliente">
+              <option value="Todos">Todos</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="txFiltroEspecie">Especie</label>
+            <select id="txFiltroEspecie">
+              <option value="Todos">Todos</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="txFiltroMercado">Mercado</label>
+            <select id="txFiltroMercado">
+              <option value="Todos">Todos</option>
+              <option value="DEFAULT">DEFAULT</option>
+              <option value="ROFEX">ROFEX</option>
+              <option value="MAE">MAE</option>
+            </select>
+          </div>
+          <button class="btn-refresh" data-action="cargar-tx" title="Actualizar" aria-label="Actualizar transacciones">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="orders-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Nro. Orden</th>
+                <th>Tipo</th>
+                <th>Especie</th>
+                <th>Cliente</th>
+                <th>Mercado</th>
+                <th>Cantidad</th>
+                <th>Precio</th>
+                <th>Importe</th>
+                <th>Comisión</th>
+                <th>Seq</th>
+              </tr>
+            </thead>
+            <tbody id="txBody">
+              <tr class="loading-row"><td colspan="11">
+                <div class="spinner"></div> Cargando transacciones...
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="panel-footer">
+          <span id="txInfo">—</span>
+          <div class="pagination" id="txPaginacion"></div>
+        </div>
+      </section>
+
+    </div><!-- /view-transacciones -->
+
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!--  VISTA: INFORMES                                          -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div id="view-informes" class="view-section">
+      <div class="view-heading">Informes</div>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Resumen Operativo</div>
+          <button class="btn-refresh" data-action="cargar-informes" title="Actualizar" aria-label="Actualizar informes">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="kpi-grid" id="kpiGrid">
+          <div class="kpi-card"><div class="kpi-value">—</div><div class="kpi-label">Fills hoy</div></div>
+          <div class="kpi-card green"><div class="kpi-value">—</div><div class="kpi-label">Ejecutadas</div></div>
+          <div class="kpi-card orange"><div class="kpi-value">—</div><div class="kpi-label">Pendientes</div></div>
+          <div class="kpi-card red"><div class="kpi-value">—</div><div class="kpi-label">Con error</div></div>
+          <div class="kpi-card accent"><div class="kpi-value">—</div><div class="kpi-label">Vol. ARP</div></div>
+          <div class="kpi-card accent"><div class="kpi-value">—</div><div class="kpi-label">Vol. USD</div></div>
+        </div>
+
+        <div class="mini-section-title">Top 5 Especies por Volumen</div>
+        <div class="table-wrap">
+          <table class="orders-table mini-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Especie</th>
+                <th>Volumen (ARP)</th>
+                <th>Fills</th>
+              </tr>
+            </thead>
+            <tbody id="topEspeciesBody">
+              <tr><td colspan="4" class="text-muted">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="export-actions">
+          <button class="btn-export" data-action="exportar-informe" data-tipo="ejecuciones">⬇ Ejecuciones CSV</button>
+          <button class="btn-export" data-action="exportar-informe" data-tipo="posiciones">⬇ Posiciones CSV</button>
+          <button class="btn-export" data-action="exportar-informe" data-tipo="xlsx">⬇ Exportar Todo XLSX</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Snapshot de Posiciones — Consolidado por Especie</div>
+        </div>
+        <div class="table-wrap">
+          <table class="orders-table">
+            <thead>
+              <tr>
+                <th>Especie</th>
+                <th>Moneda</th>
+                <th>Neto Total</th>
+                <th>Clientes</th>
+                <th>Costo Prom. Ponderado</th>
+              </tr>
+            </thead>
+            <tbody id="snapshotBody">
+              <tr><td colspan="5" class="text-muted">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" id="panelBenchmark">
+        <div class="panel-header">
+          <div class="panel-title">Benchmark — Cartera vs. S&amp;P Merval</div>
+          <button class="btn-refresh" data-action="cargar-benchmark" title="Actualizar" aria-label="Actualizar benchmark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+          </button>
+        </div>
+        <div id="benchmarkContent">
+          <div class="kpi-grid" id="benchmarkKpis">
+            <div class="kpi-card"><div class="kpi-value">—</div><div class="kpi-label">Retorno Cartera</div></div>
+            <div class="kpi-card"><div class="kpi-value">—</div><div class="kpi-label">Retorno Merval</div></div>
+            <div class="kpi-card"><div class="kpi-value">—</div><div class="kpi-label">Alpha</div></div>
+            <div class="kpi-card accent"><div class="kpi-value">—</div><div class="kpi-label">Valor Cartera</div></div>
+            <div class="kpi-card"><div class="kpi-value">—</div><div class="kpi-label">Costo Base</div></div>
+            <div class="kpi-card"><div class="kpi-value">—</div><div class="kpi-label">PnL No Realizado</div></div>
+          </div>
+          <div id="benchmarkMeta" style="font-size:10px;color:var(--text3);margin-top:8px"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Concentración por Especie</div>
+        </div>
+        <div id="concentracionContent">
+          <div style="color:var(--text3);font-size:12px">Cargando...</div>
+        </div>
+      </section>
+
+    </div><!-- /view-informes -->
+
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!--  VISTA: UTILITARIOS                                       -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div id="view-utilitarios" class="view-section">
+      <div class="view-heading">Utilitarios</div>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Estado de Servicios</div>
+          <button class="btn-refresh" data-action="cargar-utilitarios" title="Actualizar" aria-label="Actualizar utilitarios">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="health-grid" id="healthGrid">
+          <div class="health-card desconocido"><div class="health-name">Cargando...</div></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Estadísticas de Base de Datos</div>
+        </div>
+        <div class="stats-grid" id="statsGrid">
+          <div class="stat-card-big"><div class="stat-num">—</div><div class="stat-desc">Órdenes</div></div>
+          <div class="stat-card-big"><div class="stat-num">—</div><div class="stat-desc">Ejecuciones</div></div>
+          <div class="stat-card-big"><div class="stat-num">—</div><div class="stat-desc">Posiciones</div></div>
+          <div class="stat-card-big"><div class="stat-num">—</div><div class="stat-desc">Notificaciones</div></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Acciones Administrativas</div>
+        </div>
+        <div style="padding: 4px 0 8px;">
+          <p style="font-size:12px; color:var(--text3); margin-bottom:14px;">
+            El reset elimina todos los datos y re-siembra la base de datos con datos iniciales.
+            Solo disponible con <code>RESET_DB_ON_START=true</code>.
+          </p>
+          <button class="btn-danger" data-action="confirmar-reset">⚠ Reset Base de Datos</button>
+        </div>
+      </section>
+
+    </div><!-- /view-utilitarios -->
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!--  VISTA: MERCADO                                           -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div id="view-mercado" class="view-section">
+      <div class="mercado-header">
+        <span class="mercado-title">Precios de Mercado</span>
+        <span id="mercadoTc" style="font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text3)"></span>
+        <button class="btn-refresh mercado-refresh-btn" id="btnRefreshMercado" data-action="refrescar-mercado" aria-label="Actualizar precios de mercado">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+          Actualizar precios
+        </button>
+      </div>
+
+      <!-- Moneda tabs -->
+      <div class="admin-tabs" style="margin-bottom:16px">
+        <button class="admin-tab active" data-mercado-tab="arp" data-action="mercado-tab">
+          ARP — Pesos
+        </button>
+        <button class="admin-tab" data-mercado-tab="usd" data-action="mercado-tab">
+          USD — Dólares
+        </button>
+      </div>
+
+      <!-- Tab ARP -->
+      <div id="mercado-tab-arp" class="mercado-moneda-tab">
+        <div class="mercado-grid">
+          <section class="panel">
+            <div class="panel-header">
+              <div class="panel-title">BYMA — Panel Líder</div>
+            </div>
+            <div class="table-wrap">
+              <table class="orders-table">
+                <thead>
+                  <tr>
+                    <th>Especie</th>
+                    <th style="text-align:right">Precio</th>
+                    <th style="text-align:right">Var %</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="tbl-byma-body">
+                  <tr class="loading-row"><td colspan="4"><div class="spinner"></div> Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-header">
+              <div class="panel-title">Merval General</div>
+            </div>
+            <div class="table-wrap mercado-scroll">
+              <table class="orders-table">
+                <thead>
+                  <tr>
+                    <th>Especie</th>
+                    <th style="text-align:right">Precio ARS</th>
+                    <th style="text-align:right">Var %</th>
+                    <th style="text-align:right">USD impl.</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="tbl-merval-body">
+                  <tr class="loading-row"><td colspan="5"><div class="spinner"></div> Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- Tab USD -->
+      <div id="mercado-tab-usd" class="mercado-moneda-tab" style="display:none">
+        <!-- Placeholder: solo visible cuando no hay tickers USD -->
+        <div id="mercado-usd-placeholder" class="mercado-usd-placeholder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40" style="color:var(--text3);margin-bottom:12px">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <div style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:6px">Sin tickers USD configurados</div>
+          <div style="font-size:12px;color:var(--text3)">
+            Cuando incorpores instrumentos en dólares, van a aparecer acá.<br>
+            Podés agregar tickers desde <strong>Admin → Tickers</strong>.
+          </div>
+        </div>
+        <!-- Tabla: visible cuando hay tickers USD -->
+        <div id="mercado-usd-table" style="display:none">
+          <section class="panel">
+            <div class="panel-header">
+              <div class="panel-title">Instrumentos en USD</div>
+            </div>
+            <div class="table-wrap">
+              <table class="orders-table">
+                <thead>
+                  <tr>
+                    <th>Especie</th>
+                    <th style="text-align:right">Precio USD</th>
+                    <th style="text-align:right">Var %</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="tbl-usd-body">
+                  <tr class="loading-row"><td colspan="4"><div class="spinner"></div> Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!--  VISTA: ADMIN                                             -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div id="view-admin" class="view-section">
+      <div class="view-heading">Administración</div>
+
+      <!-- Admin sidebar layout -->
+      <div class="admin-layout">
+
+      <nav class="admin-sidebar">
+
+        <div class="admin-nav-group">
+          <div class="admin-nav-group-label">Usuarios</div>
+          <button class="admin-nav-item active" data-tab="usuarios" data-action="admin-tab">Usuarios</button>
+          <button class="admin-nav-item" data-tab="clientes" data-action="admin-tab">Clientes</button>
+          <button class="admin-nav-item" data-tab="operadores" data-action="admin-tab">Operadores</button>
+        </div>
+
+        <div class="admin-nav-group">
+          <div class="admin-nav-group-label">Mercado</div>
+          <button class="admin-nav-item" data-tab="tickers" data-action="admin-tab">Tickers</button>
+          <button class="admin-nav-item" data-tab="instrumentos" data-action="admin-tab">Instrumentos</button>
+          <button class="admin-nav-item" data-tab="bot" data-action="admin-tab">Bot de Mercado</button>
+          <button class="admin-nav-item" data-tab="tc" data-action="admin-tab">Tipo de Cambio</button>
+          <button class="admin-nav-item" data-tab="val-precios" data-action="admin-tab">Precios Oficiales</button>
+        </div>
+
+        <div class="admin-nav-group">
+          <div class="admin-nav-group-label">Cuentas</div>
+          <button class="admin-nav-item" data-tab="firma" data-action="admin-tab">Firma (STD)</button>
+          <button class="admin-nav-item" data-tab="cuentas-op" data-action="admin-tab">Cuentas Operadores</button>
+          <button class="admin-nav-item" data-tab="liquidaciones" data-action="admin-tab">Liquidaciones</button>
+        </div>
+
+        <div class="admin-nav-group">
+          <div class="admin-nav-group-label">Riesgo &amp; Reportes</div>
+          <button class="admin-nav-item" data-tab="contrapartes" data-action="admin-tab">Contrapartes</button>
+          <button class="admin-nav-item" data-tab="riesgo" data-action="admin-tab">Riesgo</button>
+          <button class="admin-nav-item" data-tab="pnl" data-action="admin-tab">P&amp;L</button>
+          <button class="admin-nav-item" data-tab="reportes" data-action="admin-tab">Reportes Regulatorios</button>
+          <button class="admin-nav-item" data-tab="auditoria" data-action="admin-tab">Auditoría</button>
+          <button class="admin-nav-item" data-tab="alertas-usuario" data-action="admin-tab">Alertas Usuario</button>
+        </div>
+
+        <div class="admin-nav-group">
+          <div class="admin-nav-group-label">Sistema</div>
+          <button class="admin-nav-item" data-tab="sistema" data-action="admin-tab">Sistema</button>
+        </div>
+
+      </nav><!-- /admin-sidebar -->
+
+      <div class="admin-content">
+
+      <!-- ── TAB: USUARIOS ─────────────────────────────────────── -->
+      <div id="admin-tab-usuarios" class="admin-tab-content active">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Gestión de Usuarios Operadores</div>
+            <div class="panel-filters">
+              <button class="btn-nueva-orden" data-action="abrir-modal-usuario">+ Nuevo Usuario</button>
+              <button class="btn-refresh" data-action="cargar-usuarios" title="Actualizar" aria-label="Actualizar usuarios">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Username</th>
+                  <th>Email</th>
+                  <th>Rol</th>
+                  <th>Estado</th>
+                  <th>Creado</th>
+                  <th>Último login</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="usuariosBody">
+                <tr><td colspan="8" class="text-muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── TAB: CLIENTES ─────────────────────────────────────── -->
+      <div id="admin-tab-clientes" class="admin-tab-content">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Gestión de Clientes</div>
+            <div class="panel-filters">
+              <button class="btn-nueva-orden" data-action="abrir-modal-cliente">+ Nuevo Cliente</button>
+              <button class="btn-refresh" data-action="cargar-clientes-admin" title="Actualizar" aria-label="Actualizar clientes">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Nombre</th>
+                  <th>Razón Social</th>
+                  <th>Cart. Propia</th>
+                  <th>PEP</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="clientesAdminBody">
+                <tr><td colspan="5" class="text-muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── TAB: TICKERS ──────────────────────────────────────── -->
+      <div id="admin-tab-tickers" class="admin-tab-content">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Gestión de Tickers de Mercado</div>
+            <div class="panel-filters">
+              <select id="tickerPanelFiltro">
+                <option value="">Todos los paneles</option>
+                <option value="BYMA">BYMA</option>
+                <option value="MERVAL">MERVAL</option>
+                <option value="OTRO">OTRO</option>
+              </select>
+              <button class="btn-nueva-orden" data-action="abrir-modal-ticker">+ Nuevo Ticker</button>
+              <button class="btn-refresh" data-action="cargar-tickers-admin" title="Actualizar" aria-label="Actualizar tickers">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Especie</th>
+                  <th>Nombre</th>
+                  <th>Panel</th>
+                  <th>YF Symbol</th>
+                  <th title="Volumen máximo diario — circuit breaker">CB vol.</th>
+                  <th title="Cantidad máxima por orden">Máx. qty</th>
+                  <th>Activo</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="tickersAdminBody">
+                <tr><td colspan="8" class="text-muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── TAB: BOT ──────────────────────────────────────────── -->
+      <div id="admin-tab-bot" class="admin-tab-content">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Instancias de Bot de Mercado</div>
+            <div class="panel-filters">
+              <div style="display:flex;align-items:center;gap:7px;user-select:none" title="Activa o desactiva el respeto de horario de mercado para TODOS los bots a la vez">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="switch-horario-global" checked>
+                  <span class="toggle-track"></span>
+                </label>
+                <span style="font-size:11px;color:var(--text2);cursor:pointer" data-action="toggle-horario-global">Horario (todos)</span>
+              </div>
+              <button class="btn-nueva-orden" data-action="abrir-modal-bot">+ Nueva instancia</button>
+              <button class="btn-refresh" data-action="cargar-bots" title="Actualizar" aria-label="Actualizar bots">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--text3);padding:0 0 10px 0">
+            Cada instancia corre de forma independiente con su propio intervalo, varianza y tipos de orden.
+            LIMC genera puntas compradoras; LIMV genera puntas vendedoras. El tipo de precio (límite/mercado) se controla con el campo Tipo Precio.
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Activo</th>
+                  <th>Perfil</th>
+                  <th>Intervalo</th>
+                  <th>Varianza ±%</th>
+                  <th>Fill rate</th>
+                  <th>Máx. órdenes</th>
+                  <th>Tipos de orden</th>
+                  <th>Horario</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="botsBody">
+                <tr><td colspan="10" class="text-muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+
+      <!-- ── TAB: SISTEMA ───────────────────────────────────────── -->
+      <div id="admin-tab-sistema" class="admin-tab-content">
+        <section class="panel" style="max-width:600px">
+          <div class="panel-header">
+            <div class="panel-title">Configuración del Sistema</div>
+            <button class="btn-refresh" data-action="cargar-config-sistema" title="Actualizar" aria-label="Actualizar configuración del sistema">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+            </button>
+          </div>
+
+          <!-- Motor de matching -->
+          <div style="padding:16px 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--text1)">Motor de matching automático</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:3px">
+                  Cruza automáticamente órdenes compradoras y vendedoras compatibles (precio-tiempo).<br>
+                  Cuando está desactivado, las ejecuciones se registran manualmente desde el blotter.
+                </div>
+              </div>
+              <label class="toggle-switch" style="flex-shrink:0;margin-left:24px">
+                <input type="checkbox" id="cfg-auto-matching">
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+            <div id="cfg-matching-status" style="font-size:11px;color:var(--text3);margin-top:6px">—</div>
+          </div>
+
+          <!-- Sesgo macro de mercado -->
+          <div style="margin-bottom:14px">
+            <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;display:block;margin-bottom:8px">
+              Sesgo Macro de Bots
+            </label>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:10px;color:#CC0000;font-weight:700;min-width:38px">▼ BEAR</span>
+              <input type="range" id="cfg-mercado-sesgo" min="-100" max="100" value="0" step="5"
+                style="flex:1;accent-color:var(--accent)">
+              <span style="font-size:10px;color:#267326;font-weight:700;min-width:38px;text-align:right">▲ BULL</span>
+            </div>
+            <div style="text-align:center;margin-top:4px;font-size:12px;font-weight:700;color:var(--text1)">
+              <span id="cfg-sesgo-valor">0%</span>
+            </div>
+            <div style="font-size:10px;color:var(--text3);margin-top:5px">
+              Desplaza el sesgo compra/venta de <strong>todos</strong> los bots simultáneamente. 0% = neutral.
+            </div>
+          </div>
+
+          <!-- Mercado de ejecución -->
+          <div style="padding:16px 0">
+            <label style="font-size:12px;color:var(--text2);font-weight:600;display:block;margin-bottom:6px">
+              Mercado para fills automáticos
+            </label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <select id="cfg-matching-mercado" style="font-size:12px;padding:5px 8px;background:var(--bg2);border:1px solid var(--border);color:var(--text1);border-radius:4px;flex:1">
+                <option value="DEFAULT">DEFAULT</option>
+                <option value="BYMA">BYMA</option>
+                <option value="MAE">MAE</option>
+                <option value="ROFEX">ROFEX</option>
+              </select>
+              <button class="btn-nueva-orden" style="font-size:11px;padding:5px 12px" data-action="guardar-mercado-matching">Guardar</button>
+            </div>
+            <div style="font-size:10px;color:var(--text3);margin-top:5px">
+              Afecta la regla de liquidación (T+0/T+1/T+2) y la confirmación bilateral (MAE/ROFEX).
+            </div>
+          </div>
+
+        </section>
+
+        <!-- Zona de peligro -->
+        <section class="panel" style="max-width:600px;border:1px solid var(--red);margin-top:20px">
+          <div class="panel-header">
+            <div class="panel-title" style="color:var(--red)">Zona de peligro</div>
+          </div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:14px">
+            Elimina <strong>todos</strong> los datos operativos: órdenes, ejecuciones, posiciones y movimientos de cuenta.
+            Los seeds, configuración, tickers, clientes, bots y usuarios se conservan.
+            <strong style="color:var(--red)">Esta acción es irreversible.</strong>
+          </div>
+          <button class="btn-mini btn-danger" style="font-size:12px;padding:6px 16px" data-action="reset-demo-data">
+            Reiniciar datos operativos
+          </button>
+          <div id="demo-reset-result" style="font-size:11px;margin-top:8px"></div>
+        </section>
+      </div>
+
+
+      <!-- ── TAB: INSTRUMENTOS ──────────────────────────────────── -->
+      <div id="admin-tab-instrumentos" class="admin-tab-content">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Catálogo de Instrumentos</div>
+            <div class="panel-filters">
+              <select id="instTipoFiltro">
+                <option value="">Todos los tipos</option>
+                <option value="ACCION">ACCION</option>
+                <option value="RENTA_FIJA">RENTA_FIJA</option>
+                <option value="FUTURO">FUTURO</option>
+                <option value="CAUCION">CAUCION</option>
+                <option value="CPD">CPD</option>
+                <option value="FX">FX</option>
+                <option value="OTRO">OTRO</option>
+              </select>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+                <input type="checkbox" id="instSoloActivos" checked> Solo activos
+              </label>
+              <button class="btn-nueva-orden" data-action="abrir-modal-instrumento">+ Nuevo</button>
+              <button class="btn-refresh" data-action="cargar-instrumentos" title="Actualizar" aria-label="Actualizar instrumentos">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Especie</th>
+                  <th>Tipo</th>
+                  <th>Moneda</th>
+                  <th>Mercado</th>
+                  <th>Descripción</th>
+                  <th>Activo</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="instrumentosBody">
+                <tr><td colspan="7" class="text-muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── TAB: P&L ───────────────────────────────────────────── -->
+      <div id="admin-tab-pnl" class="admin-tab-content">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">P&amp;L Diario</div>
+            <div class="panel-filters" id="pnl-admin-btns">
+              <input type="date" id="pnlFechaDesde" title="Desde">
+              <input type="date" id="pnlFechaHasta" title="Hasta">
+              <input type="text" id="pnlCliente" placeholder="Cliente" style="width:100px">
+              <input type="text" id="pnlEspecie" placeholder="Especie" style="width:80px">
+              <button class="btn-nueva-orden" data-action="cargar-pnl">Filtrar</button>
+              <button class="btn-nueva-orden" style="background:var(--accent2,#4a9eff)" data-action="abrir-cierre-dia">Cerrar Día</button>
+              <button class="btn-refresh" data-action="cargar-pnl" title="Actualizar" aria-label="Actualizar P&L"></button>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div id="pnl-resumen" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;padding:0 4px"></div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Cliente</th>
+                  <th>Especie</th>
+                  <th>Moneda</th>
+                  <th style="text-align:right">P&amp;L Realizado</th>
+                  <th style="text-align:right">P&amp;L No Real.</th>
+                  <th style="text-align:right">P&amp;L Total</th>
+                  <th style="text-align:right">Vol. Comprado</th>
+                  <th style="text-align:right">Vol. Vendido</th>
+                </tr>
+              </thead>
+              <tbody id="pnlBody">
+                <tr><td colspan="9" class="text-muted">Usá los filtros para cargar datos.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="execute-result" id="pnlCierreDiaResult" style="margin-top:8px"></div>
+        </section>
+
+        <!-- P&L por Desk (Feature 15) -->
+        <section class="panel" style="margin-top:14px">
+          <div class="panel-header">
+            <div class="panel-title">P&amp;L por Desk (Centro de Costo)</div>
+            <div class="panel-filters">
+              <input type="date" id="pnlDeskFecha">
+              <button class="btn-nueva-orden" data-action="cargar-pnl-desk">Cargar</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Desk</th>
+                  <th style="text-align:right">P&amp;L Realizado</th>
+                  <th style="text-align:right">P&amp;L No Real.</th>
+                  <th style="text-align:right">P&amp;L Total</th>
+                  <th style="text-align:right">Vol. Comprado</th>
+                  <th style="text-align:right">Vol. Vendido</th>
+                  <th style="text-align:right">Posiciones</th>
+                </tr>
+              </thead>
+              <tbody id="pnlDeskBody">
+                <tr><td colspan="7" class="text-muted">Seleccioná una fecha para ver el P&L por desk.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── TAB: TIPO DE CAMBIO ────────────────────────────────── -->
+      <div id="admin-tab-tc" class="admin-tab-content">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Tipo de Cambio</div>
+            <div class="panel-filters">
+              <button class="btn-nueva-orden" data-action="cargar-tc-actual">Actualizar</button>
+              <button class="btn-nueva-orden" style="background:var(--accent2,#4a9eff)" data-action="guardar-tc-hoy">Guardar hoy</button>
+            </div>
+          </div>
+          <div id="tc-cards" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px;padding:0 4px"></div>
+          <div class="panel-header" style="margin-top:8px">
+            <div class="panel-title" style="font-size:12px">Histórico</div>
+            <div class="panel-filters">
+              <select id="tcTipoFiltro">
+                <option value="">Todos</option>
+                <option value="MEP">MEP</option>
+                <option value="CCL">CCL</option>
+                <option value="CABLE">CABLE</option>
+                <option value="OFICIAL">OFICIAL</option>
+                <option value="BNA">BNA</option>
+              </select>
+              <input type="date" id="tcFechaDesde">
+              <input type="date" id="tcFechaHasta">
+              <button class="btn-nueva-orden" data-action="cargar-tc-historico">Filtrar</button>
+            </div>
+          </div>
+          <div class="table-wrap" style="margin-top:8px">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Tipo</th>
+                  <th style="text-align:right">Compra</th>
+                  <th style="text-align:right">Venta</th>
+                  <th>Fuente</th>
+                </tr>
+              </thead>
+              <tbody id="tcHistoricoBody">
+                <tr><td colspan="5" class="text-muted">Filtrá para cargar histórico.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="execute-result" id="tcResult" style="margin-top:8px"></div>
+        </section>
+      </div>
+
+      <!-- ── TAB: REPORTES ──────────────────────────────────────── -->
+      <div id="admin-tab-reportes" class="admin-tab-content">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Reportes Regulatorios</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:20px">
+            <div style="background:var(--bg4);border:1px solid var(--border);border-radius:4px;padding:14px">
+              <div style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--text2);margin-bottom:10px">CNV / BYMA — Operaciones concertadas</div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label>Fecha</label>
+                <input type="date" id="rptCnvFecha">
+              </div>
+              <div style="display:flex;gap:6px">
+                <button class="btn-nueva-orden" data-action="cargar-reporte-cnv">Ver</button>
+                <button class="btn-export" data-action="descargar-reporte" data-tipo="cnv-byma" data-fecha-id="rptCnvFecha">CSV</button>
+              </div>
+            </div>
+            <div style="background:var(--bg4);border:1px solid var(--border);border-radius:4px;padding:14px">
+              <div style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--text2);margin-bottom:10px">BCRA — Posición de cambios</div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label>Fecha</label>
+                <input type="date" id="rptBcraFecha">
+              </div>
+              <div style="display:flex;gap:6px">
+                <button class="btn-nueva-orden" data-action="cargar-reporte-bcra">Ver</button>
+                <button class="btn-export" data-action="descargar-reporte" data-tipo="bcra-cambios" data-fecha-id="rptBcraFecha">CSV</button>
+              </div>
+            </div>
+            <div style="background:var(--bg4);border:1px solid var(--border);border-radius:4px;padding:14px">
+              <div style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--text2);margin-bottom:10px">UIF — Operaciones inusuales</div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label>Fecha</label>
+                <input type="date" id="rptUifFecha">
+              </div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label>Umbral ARS</label>
+                <input type="number" id="rptUifUmbral" value="1000000" min="1" step="1">
+              </div>
+              <div style="display:flex;gap:6px">
+                <button class="btn-nueva-orden" data-action="cargar-reporte-uif">Ver</button>
+                <button class="btn-export" data-action="descargar-reporte" data-tipo="uif-inusuales" data-fecha-id="rptUifFecha" data-umbral-id="rptUifUmbral">CSV</button>
+              </div>
+            </div>
+          </div>
+          <div id="rptResultado" style="display:none">
+            <div class="panel-header" style="margin-top:0">
+              <div class="panel-title" style="font-size:12px" id="rptResultadoTitulo">Resultados</div>
+            </div>
+            <div class="table-wrap">
+              <table class="orders-table mini-table">
+                <thead id="rptTablaHead"></thead>
+                <tbody id="rptTablaBody">
+                  <tr><td class="text-muted">Sin datos.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── TAB: CONTRAPARTES ──────────────────────────────────── -->
+      <div id="admin-tab-contrapartes" class="admin-tab-content">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Contrapartes</div>
+            <div class="panel-filters">
+              <button class="btn-nueva-orden" data-action="abrir-modal-contraparte">+ Nueva</button>
+              <button class="btn-refresh" data-action="cargar-contrapartes" title="Actualizar" aria-label="Actualizar contrapartes">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Nombre</th>
+                  <th>Tipo</th>
+                  <th>Activo</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="contrapartesBody">
+                <tr><td colspan="5" class="text-muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── TAB: RIESGO ────────────────────────────────────────── -->
+      <div id="admin-tab-riesgo" class="admin-tab-content">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Límites de Riesgo</div>
+            <div class="panel-filters">
+              <button class="btn-nueva-orden" data-action="abrir-modal-limite-riesgo">+ Nuevo límite</button>
+              <button class="btn-refresh" data-action="cargar-limites" title="Actualizar" aria-label="Actualizar límites">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Owner</th>
+                  <th>Tipo Límite</th>
+                  <th>Especie</th>
+                  <th>Moneda</th>
+                  <th style="text-align:right">Límite</th>
+                  <th style="text-align:right">Alerta %</th>
+                  <th>Activo</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="limitesBody">
+                <tr><td colspan="8" class="text-muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── TAB: LIQUIDACIONES ─────────────────────────────────── -->
+      <div id="admin-tab-liquidaciones" class="admin-tab-content">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Liquidaciones Pendientes</div>
+            <div class="panel-filters">
+              <button class="btn-nueva-orden" style="background:var(--accent2,#4a9eff)" data-action="procesar-liquidaciones">Procesar EOD</button>
+              <button class="btn-refresh" data-action="cargar-liquidaciones" title="Actualizar" aria-label="Actualizar liquidaciones">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div class="execute-result" id="liquidResult" style="margin-bottom:8px"></div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>ID Fill</th>
+                  <th>Especie</th>
+                  <th>Cliente</th>
+                  <th>Cantidad</th>
+                  <th style="text-align:right">Precio</th>
+                  <th>F. Liq.</th>
+                  <th>Mercado</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="liquidBody">
+                <tr><td colspan="8" class="text-muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="liquidPaginador" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 0;font-size:11px;color:var(--text2)">
+            <button class="btn-mini" id="liq-prev" data-action="liq-prev" aria-label="Página anterior">&#8592; Ant</button>
+            <span id="liq-pag-info">Página 1 de 1</span>
+            <button class="btn-mini" id="liq-next" data-action="liq-next" aria-label="Página siguiente">Sig &#8594;</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── TAB: OPERADORES (Feature 15) ──────────────────────── -->
+      <div id="admin-tab-operadores" class="admin-tab-content">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Operadores por Desk</div>
+            <div class="panel-filters">
+              <button class="btn-nueva-orden" data-action="abrir-modal-operador">+ Nuevo Operador</button>
+              <button class="btn-refresh" data-action="cargar-operadores" title="Actualizar" aria-label="Actualizar operadores">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nombre</th>
+                  <th>Username</th>
+                  <th>Desk</th>
+                  <th>Cliente</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="operadoresBody">
+                <tr><td colspan="7" class="text-muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── TAB: VALUACIÓN DE PRECIOS (Feature 16) ─────────────── -->
+      <div id="admin-tab-val-precios" class="admin-tab-content">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Precios de Valuación Oficial</div>
+            <div class="panel-filters">
+              <button class="btn-nueva-orden" style="background:var(--accent2,#4a9eff)" data-action="snapshot-precios">Snapshot Cierre</button>
+              <button class="btn-refresh" data-action="cargar-precios-historico" title="Actualizar" aria-label="Actualizar precios históricos">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Form to register official prices -->
+          <div style="background:var(--bg4);border:1px solid var(--border);border-radius:4px;padding:14px;margin-bottom:14px">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--text2);margin-bottom:10px">Registrar Precio Oficial</div>
+            <div class="form-grid" style="grid-template-columns:repeat(5,1fr) auto">
+              <div class="form-group">
+                <label>Especie</label>
+                <input type="text" id="vpEspecie" placeholder="GGAL" style="text-transform:uppercase">
+              </div>
+              <div class="form-group">
+                <label>Precio</label>
+                <input type="number" id="vpPrecio" placeholder="0.00" step="0.01" min="0.01">
+              </div>
+              <div class="form-group">
+                <label>Fecha</label>
+                <input type="date" id="vpFecha">
+              </div>
+              <div class="form-group">
+                <label title="AJUSTE: BYMA/ROFEX ·  CORTE_MAE: renta fija MAE · CIERRE: EOD regular">Tipo</label>
+                <select id="vpTipo">
+                  <option value="AJUSTE">AJUSTE — BYMA/ROFEX</option>
+                  <option value="CORTE_MAE">CORTE_MAE — MAE RF</option>
+                  <option value="CIERRE">CIERRE — EOD regular</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Fuente</label>
+                <select id="vpFuente">
+                  <option value="BYMA">BYMA</option>
+                  <option value="ROFEX">ROFEX</option>
+                  <option value="MAE">MAE</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </div>
+              <div class="form-group" style="align-self:flex-end">
+                <button class="btn-nueva-orden" data-action="registrar-cierre-ajuste">Guardar</button>
+              </div>
+            </div>
+            <div class="execute-result" id="vpResult" style="margin-top:6px"></div>
+          </div>
+
+          <!-- Filters + table -->
+          <div class="panel-filters" style="margin-bottom:10px">
+            <div class="filter-group"><label>Especie</label><input type="text" id="vpFiltroEspecie" placeholder="GGAL" style="width:80px;text-transform:uppercase"></div>
+            <div class="filter-group">
+              <label>Tipo</label>
+              <select id="vpFiltroTipo">
+                <option value="">Todos</option>
+                <option value="AJUSTE">AJUSTE</option>
+                <option value="CORTE_MAE">CORTE_MAE</option>
+                <option value="CIERRE">CIERRE</option>
+              </select>
+            </div>
+            <div class="filter-group"><label>Desde</label><input type="date" id="vpFiltroDesde"></div>
+            <div class="filter-group"><label>Hasta</label><input type="date" id="vpFiltroHasta"></div>
+            <button class="btn-nueva-orden" data-action="cargar-precios-historico">Filtrar</button>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Especie</th>
+                  <th style="text-align:right">Precio</th>
+                  <th>Tipo</th>
+                  <th>Fuente</th>
+                </tr>
+              </thead>
+              <tbody id="preciosHistBody">
+                <tr><td colspan="5" class="text-muted">Filtrá para cargar precios históricos.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── TAB: FIRMA ──────────────────────────────────────────── -->
+      <div id="admin-tab-firma" class="admin-tab-content">
+
+        <!-- KPI row -->
+        <div id="firma-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;padding:0 4px"></div>
+
+        <!-- Movimientos de la cuenta propia -->
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Cuenta Corriente de la Firma (STD)</div>
+            <div class="panel-filters">
+              <select id="firmaMoneda" title="Moneda">
+                <option value="ARP">ARS</option>
+                <option value="USD">USD</option>
+              </select>
+              <button class="btn-nueva-orden" data-action="firma-depositar" title="Acreditar fondos">+ Depositar</button>
+              <button class="btn-nueva-orden" style="background:var(--sell,#e05c5c)" data-action="firma-retirar" title="Debitar fondos">− Retirar</button>
+              <button class="btn-refresh" data-action="cargar-firma" title="Actualizar" aria-label="Actualizar firma">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Fecha/Hora</th>
+                  <th>Tipo</th>
+                  <th>Sentido</th>
+                  <th style="text-align:right">Monto</th>
+                  <th style="text-align:right">Balance Post</th>
+                  <th>Descripción</th>
+                  <th>Usuario</th>
+                </tr>
+              </thead>
+              <tbody id="firmaMovBody">
+                <tr><td colspan="7" class="text-muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="firmaPagBar" style="margin-top:8px;text-align:center;font-size:11px;color:var(--text2)"></div>
+          <div class="execute-result" id="firmaResult" style="margin-top:6px"></div>
+        </section>
+
+        <!-- Posiciones de cartera propia -->
+        <section class="panel" style="margin-top:14px">
+          <div class="panel-header">
+            <div class="panel-title">Posiciones Cartera Propia</div>
+            <div class="panel-filters">
+              <button class="btn-refresh" data-action="cargar-posiciones-firma" title="Actualizar" aria-label="Actualizar posiciones firma">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Especie</th>
+                  <th>Mercado</th>
+                  <th style="text-align:right">Comprado</th>
+                  <th style="text-align:right">Vendido</th>
+                  <th style="text-align:right">Neto</th>
+                  <th style="text-align:right">Costo Prom.</th>
+                  <th style="text-align:right">Pend. Liq.</th>
+                </tr>
+              </thead>
+              <tbody id="firmaPosBody">
+                <tr><td colspan="7" class="text-muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── TAB: CUENTAS OPERADORES ─────────────────────────────── -->
+      <div id="admin-tab-cuentas-op" class="admin-tab-content">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Cuentas de Operadores</div>
+            <div class="panel-filters">
+              <button class="btn-refresh" data-action="cargar-cuentas-op" title="Actualizar" aria-label="Actualizar cuentas operadores">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Operador</th>
+                  <th>Username</th>
+                  <th>Desk</th>
+                  <th style="text-align:right">Saldo ARP</th>
+                  <th style="text-align:right">Disponible</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="cuentasOpBody">
+                <tr><td colspan="6" class="text-muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Movimientos del operador seleccionado -->
+        <section class="panel" id="opMovPanel" style="display:none;margin-top:14px">
+          <div class="panel-header">
+            <div class="panel-title" id="opMovTitle">Movimientos</div>
+            <div class="panel-filters">
+              <button class="btn-refresh" data-action="recargar-mov-op" title="Actualizar" aria-label="Actualizar movimientos operador">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Fecha/Hora</th>
+                  <th>Tipo</th>
+                  <th>Sentido</th>
+                  <th style="text-align:right">Monto</th>
+                  <th style="text-align:right">Balance Post</th>
+                  <th>Descripción</th>
+                  <th>Usuario</th>
+                </tr>
+              </thead>
+              <tbody id="opMovBody">
+                <tr><td colspan="7" class="text-muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="opMovPagBar" style="margin-top:8px;text-align:center;font-size:11px;color:var(--text2)"></div>
+        </section>
+      </div>
+
+      <!-- ── TAB: AUDITORÍA ─────────────────────────────────────── -->
+      <div id="admin-tab-auditoria" class="admin-tab-content">
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Registro de Auditoría</div>
+            <div class="panel-filters">
+              <input type="text" id="auditTablaFiltro" placeholder="Tabla (ej: orden)" style="width:130px">
+              <select id="auditOpFiltro">
+                <option value="">Todas las ops.</option>
+                <option value="CREATE">CREATE</option>
+                <option value="UPDATE">UPDATE</option>
+                <option value="CANCEL">CANCEL</option>
+                <option value="EXECUTE">EXECUTE</option>
+              </select>
+              <select id="auditPerPage" title="Registros por página">
+                <option value="25">25 / pág</option>
+                <option value="50" selected>50 / pág</option>
+                <option value="100">100 / pág</option>
+                <option value="200">200 / pág</option>
+              </select>
+              <button class="btn-nueva-orden" data-action="reset-audit-page">Filtrar</button>
+              <button class="btn-refresh" data-action="reset-audit-page" title="Actualizar" aria-label="Actualizar auditoría">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Tabla</th>
+                  <th>Operación</th>
+                  <th>ID Registro</th>
+                  <th>Usuario</th>
+                </tr>
+              </thead>
+              <tbody id="auditBody">
+                <tr><td colspan="5" class="text-muted">Usá los filtros para cargar el log.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0">
+            <div id="auditTotal" style="font-size:11px;color:var(--text3)"></div>
+            <div id="auditPagBar" style="font-size:11px;color:var(--text2)"></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── TAB: ALERTAS USUARIO ─────────────────────────────── -->
+      <div id="admin-tab-alertas-usuario" class="admin-tab-content">
+
+        <!-- Nueva alerta -->
+        <section class="panel" style="max-width:680px;margin-bottom:16px">
+          <div class="panel-header">
+            <div class="panel-title">Nueva Alerta</div>
+          </div>
+          <div style="padding:14px 16px">
+            <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end">
+              <div class="form-group">
+                <label>Tipo</label>
+                <select id="alerta-tipo">
+                  <option value="ORDEN_MONTO">Orden — Monto</option>
+                  <option value="POSICION_CAIDA">Posición — Caída P&L</option>
+                  <option value="POSICION_SUBE">Posición — Suba P&L</option>
+                  <option value="VOLUMEN_CLIENTE">Volumen cliente/día</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Umbral</label>
+                <input type="number" id="alerta-umbral" placeholder="1000000" min="1" step="1000">
+              </div>
+              <div class="form-group">
+                <label>Moneda</label>
+                <select id="alerta-moneda">
+                  <option value="ARP">ARP</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Cliente <span style="color:var(--text3)">(vacío = todos)</span></label>
+                <input type="text" id="alerta-cliente" placeholder="STD">
+              </div>
+              <div class="form-group">
+                <label>Especie <span style="color:var(--text3)">(vacío = todas)</span></label>
+                <input type="text" id="alerta-especie" placeholder="GGAL" style="text-transform:uppercase">
+              </div>
+              <div class="form-group" style="align-self:end">
+                <button class="btn-nueva-orden" data-action="guardar-alerta" style="width:100%">Crear Alerta</button>
+              </div>
+            </div>
+            <div id="alertaFormMsg" style="margin-top:8px;font-size:11px;min-height:16px"></div>
+          </div>
+        </section>
+
+        <!-- Lista de alertas activas -->
+        <section class="panel" style="max-width:680px">
+          <div class="panel-header">
+            <div class="panel-title">Mis Alertas</div>
+            <button class="btn-refresh" data-action="cargar-alertas" title="Actualizar" aria-label="Actualizar alertas">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+              </svg>
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table mini-table">
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Umbral</th>
+                  <th>Moneda</th>
+                  <th>Cliente</th>
+                  <th>Especie</th>
+                  <th>Estado</th>
+                  <th>Última vez</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="alertasBody">
+                <tr><td colspan="8" class="text-muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </div><!-- /admin-tab-alertas-usuario -->
+
+      </div><!-- /admin-content -->
+      </div><!-- /admin-layout -->
+
+    </div><!-- /view-admin -->
+
+  </main>
+</div>
+
+<!-- ── MODAL CUENTA (depositar / retirar — firma y operadores) ── -->
+<div class="modal-overlay" id="modalCuenta" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="modalCuentaTitulo">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalCuentaTitulo">Depositar</div>
+        <div class="modal-subtitle" id="modalCuentaSubtitulo">Cuenta de la firma</div>
+      </div>
+      <button class="modal-close" data-action="cerrar-modal" title="Cerrar (Esc)" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="mcContexto">   <!-- "firma" | "operador" -->
+      <input type="hidden" id="mcSentido">    <!-- "CREDIT" | "DEBIT" -->
+      <input type="hidden" id="mcOpId">       <!-- operador id (solo cuando contexto=operador) -->
+      <div class="form-grid" style="grid-template-columns:1fr 1fr">
+        <div class="form-group">
+          <label>Monto</label>
+          <input type="number" id="mcMonto" min="0.01" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>Moneda</label>
+          <select id="mcMoneda">
+            <option value="ARP">ARS</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Descripción</label>
+        <input type="text" id="mcDescripcion" placeholder="Motivo del movimiento (mín. 5 caracteres)" maxlength="300">
+      </div>
+      <div class="execute-result" id="mcResult" style="margin-top:6px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" data-action="cerrar-modal">Cancelar</button>
+      <button class="btn-nueva-orden" id="mcBtnConfirmar" data-action="confirmar-modal-cuenta">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL USUARIO ─────────────────────────────────────────── -->
+<div class="modal-overlay" id="modalUsuario" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="modalUsuarioTitulo">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalUsuarioTitulo">Nuevo Usuario</div>
+        <div class="modal-subtitle">Complete los datos del usuario</div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="u-id">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="u-username" placeholder="usuario123">
+        </div>
+        <div class="form-group">
+          <label>Email (opcional)</label>
+          <input type="email" id="u-email" placeholder="usuario@empresa.com">
+        </div>
+        <div class="form-group">
+          <label>Rol</label>
+          <select id="u-rol">
+            <option value="OPERADOR">OPERADOR</option>
+            <option value="ADMIN">ADMIN</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label id="u-pass-label">Contraseña</label>
+          <input type="password" id="u-password" placeholder="mínimo 6 caracteres">
+        </div>
+      </div>
+      <div class="execute-result" id="usuarioResult"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cerrar" data-action="cerrar-modal">Cancelar</button>
+      <button class="btn-nueva-orden" data-action="guardar-usuario">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL CLIENTE ─────────────────────────────────────────── -->
+<div class="modal-overlay" id="modalCliente" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="modalClienteTitulo">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalClienteTitulo">Nuevo Cliente</div>
+        <div class="modal-subtitle">Complete los datos del cliente</div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="c-codigo-orig">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Código</label>
+          <input type="text" id="c-codigo" placeholder="STD" maxlength="20">
+        </div>
+        <div class="form-group">
+          <label>Nombre corto</label>
+          <input type="text" id="c-nombre" placeholder="Cartera STD">
+        </div>
+        <div class="form-group" style="grid-column: span 2">
+          <label>Razón Social</label>
+          <input type="text" id="c-razon" placeholder="Sociedad Comercial Ejemplo S.A.">
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="c-cartera-propia"> Cartera Propia
+          </label>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="c-pep"> Es PEP (UIF)
+          </label>
+        </div>
+      </div>
+      <div class="execute-result" id="clienteResult"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cerrar" data-action="cerrar-modal">Cancelar</button>
+      <button class="btn-nueva-orden" data-action="guardar-cliente">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL TICKER ──────────────────────────────────────────── -->
+<div class="modal-overlay" id="modalTicker" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="modalTickerTitulo">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalTickerTitulo">Nuevo Ticker</div>
+        <div class="modal-subtitle">Complete los datos del ticker</div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="t-especie-orig">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Especie</label>
+          <input type="text" id="t-especie" placeholder="GGAL" maxlength="20">
+        </div>
+        <div class="form-group">
+          <label>Panel</label>
+          <select id="t-panel">
+            <option value="BYMA">BYMA</option>
+            <option value="MERVAL">MERVAL</option>
+            <option value="USD">USD</option>
+            <option value="OTRO">OTRO</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>YF Symbol (opcional)</label>
+          <input type="text" id="t-yf" placeholder="GGAL.BA">
+        </div>
+        <div class="form-group">
+          <label>Nombre (opcional)</label>
+          <input type="text" id="t-nombre" placeholder="Grupo Financiero Galicia">
+        </div>
+        <div class="form-group">
+          <label title="Volumen máximo diario — al alcanzarse se detiene el matching para esta especie (0 = sin límite)">Circuit breaker — vol. máx. día</label>
+          <input type="number" id="t-volumen-max" placeholder="0 = sin límite" min="0" step="1000">
+        </div>
+        <div class="form-group">
+          <label title="Cantidad máxima permitida por orden — órdenes que superen este valor son rechazadas (0 = sin límite)">Cant. máx. por orden</label>
+          <input type="number" id="t-cantidad-max" placeholder="0 = sin límite" min="0" step="1000">
+        </div>
+      </div>
+      <div class="execute-result" id="tickerResult"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cerrar" data-action="cerrar-modal">Cancelar</button>
+      <button class="btn-nueva-orden" data-action="guardar-ticker">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL BOT ─────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modalBot" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="modalBotTitulo">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalBotTitulo">Nueva instancia de Bot</div>
+        <div class="modal-subtitle">Configure el comportamiento de la instancia</div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="b-id">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Nombre</label>
+          <input type="text" id="b-nombre" placeholder="ej: Comprador agresivo">
+        </div>
+        <div class="form-group">
+          <label>Perfil de comportamiento</label>
+          <select id="b-perfil">
+            <option value="CONSERVADOR">CONSERVADOR — cauteloso, offsets amplios</option>
+            <option value="MODERADO" selected>MODERADO — equilibrado</option>
+            <option value="AGRESIVO">AGRESIVO — activo, offsets estrechos</option>
+            <option value="TRADER">TRADER — scalper, ultra-rápido, offsets mínimos</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Intervalo entre ticks (seg)</label>
+          <input type="number" id="b-interval" min="1" max="120" step="1" value="5">
+        </div>
+        <div class="form-group">
+          <label>Varianza de precio (%) ±</label>
+          <input type="number" id="b-variance" min="0.01" max="5" step="0.01" value="0.8">
+        </div>
+        <div class="form-group">
+          <label>Máx. órdenes pendientes</label>
+          <input type="number" id="b-max-ordenes" min="1" max="500" step="1" value="20">
+        </div>
+        <div class="form-group">
+          <label>Tasa de ejecución (fill rate)</label>
+          <div style="display:flex;align-items:center;gap:10px">
+            <input type="range" id="b-fill-rate" min="0" max="1" step="0.05" value="0.45"
+                   style="flex:1">
+            <span id="b-fill-rate-val" style="font-family:'IBM Plex Mono',monospace;font-size:12px;min-width:36px">45%</span>
+          </div>
+          <div style="font-size:10px;color:var(--text3);margin-top:3px">Probabilidad de que una orden bot reciba ejecución</div>
+        </div>
+        <div class="form-group">
+          <label>% Órdenes a mercado (override)</label>
+          <div style="display:flex;align-items:center;gap:10px">
+            <input type="range" id="b-prob-mercado" min="0" max="1" step="0.01" value=""
+                   style="flex:1">
+            <span id="b-prob-mercado-val" style="font-family:'IBM Plex Mono',monospace;font-size:12px;min-width:36px">perfil</span>
+          </div>
+          <div style="font-size:10px;color:var(--text3);margin-top:3px">Probabilidad de emitir MERCADO en vez de LÍMITE. Vacío = usa el default del perfil.</div>
+        </div>
+        <div class="form-group" style="align-self:end">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none">
+            <label class="toggle-switch">
+              <input type="checkbox" id="b-respetar-horario" checked>
+              <span class="toggle-track"></span>
+            </label>
+            <span>Respetar horario de mercado</span>
+          </label>
+          <div style="font-size:10px;color:var(--text3);margin-top:3px">Lun–Vie 10:00–17:00 ART. Desactivar para operar fuera de horario.</div>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:8px">
+          Tipos de orden que puede generar
+        </label>
+        <div class="bot-tipos-grid">
+          <label class="bot-tipo-check">
+            <input type="checkbox" id="bt-LIMC" value="LIMC">
+            <span class="bt-label bt-compra">LIMC <span class="bt-desc">Compra límite</span></span>
+          </label>
+          <label class="bot-tipo-check">
+            <input type="checkbox" id="bt-LIMV" value="LIMV">
+            <span class="bt-label bt-venta">LIMV <span class="bt-desc">Venta límite</span></span>
+          </label>
+        </div>
+      </div>
+      <div class="execute-result" id="botResult"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cerrar" data-action="cerrar-modal">Cancelar</button>
+      <button class="btn-nueva-orden" data-action="guardar-bot">Guardar instancia</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL CUENTA BOT ──────────────────────────────────────── -->
+<div class="modal-overlay" id="modalCuentaBot" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="cuentaBotTitulo">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="cuentaBotTitulo">Cuenta: —</div>
+        <div class="modal-subtitle" id="cuentaBotSubtitulo">Cuenta corriente del bot</div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="admin-tabs" style="margin-bottom:16px">
+        <button class="admin-tab active" id="cbTab-resumen"      data-action="switch-cuentabot-tab" data-tab="resumen">Resumen</button>
+        <button class="admin-tab"        id="cbTab-movimientos"  data-action="switch-cuentabot-tab" data-tab="movimientos">Movimientos</button>
+        <button class="admin-tab"        id="cbTab-operaciones"  data-action="switch-cuentabot-tab" data-tab="operaciones" style="display:none">Operaciones</button>
+      </div>
+
+      <!-- Sin cuenta -->
+      <div id="cb-sin-cuenta" style="display:none;padding:24px;text-align:center;color:var(--text3)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36" style="color:var(--text3);margin-bottom:10px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:6px">Bot sin cuenta asignada</div>
+        <div style="font-size:11px;margin-bottom:16px" id="cb-sin-cuenta-msg"></div>
+        <div id="cb-init-form" style="display:none;max-width:320px;margin:0 auto;text-align:left">
+          <div class="form-group" style="margin-bottom:10px">
+            <label>Capital inicial (ARS)</label>
+            <input type="number" id="cb-init-capital" min="1" step="1" placeholder="ej: 5000000">
+          </div>
+          <div class="execute-result" id="cb-init-result" style="margin-bottom:8px"></div>
+          <button class="btn-nueva-orden" data-action="inicializar-cuenta-bot">Asignar capital y crear cuenta</button>
+        </div>
+      </div>
+
+      <!-- TAB Resumen -->
+      <div id="cb-tab-resumen">
+        <div id="cb-metricas" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px"></div>
+        <div id="cb-stats"    style="font-size:11px;color:var(--text3);padding:4px 0 8px 0"></div>
+      </div>
+
+      <!-- TAB Movimientos -->
+      <div id="cb-tab-movimientos" style="display:none">
+        <div class="table-wrap" style="max-height:320px;overflow-y:auto">
+          <table class="orders-table mini-table">
+            <thead>
+              <tr>
+                <th>Fecha / Hora</th>
+                <th>Tipo</th>
+                <th>Sentido</th>
+                <th style="text-align:right">Monto</th>
+                <th style="text-align:right">Saldo post</th>
+                <th>Descripción</th>
+              </tr>
+            </thead>
+            <tbody id="cb-movimientos-body">
+              <tr><td colspan="6" class="text-muted">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="cb-paginador" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 0;font-size:11px;color:var(--text2)">
+          <button class="btn-mini" id="cb-pag-prev" data-action="pag-bot" data-dir="-1">← Ant</button>
+          <span id="cb-pag-info">Página 1 de 1</span>
+          <button class="btn-mini" id="cb-pag-next" data-action="pag-bot" data-dir="1">Sig →</button>
+        </div>
+      </div>
+
+      <!-- TAB Operaciones (ADMIN) -->
+      <div id="cb-tab-operaciones" style="display:none">
+        <div class="form-grid" style="margin-bottom:16px">
+          <div class="form-group">
+            <label>Operación</label>
+            <div style="display:flex;gap:16px;padding-top:6px">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+                <input type="radio" name="cb-sentido" value="CREDIT" id="cb-sentido-credit" checked> Acreditar
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+                <input type="radio" name="cb-sentido" value="DEBIT"  id="cb-sentido-debit"> Debitar
+              </label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Monto (ARS)</label>
+            <input type="number" id="cb-monto" min="0.01" step="0.01" placeholder="0.00">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Descripción (mín. 5 caracteres)</label>
+            <input type="text" id="cb-descripcion" maxlength="300" placeholder="Motivo del ajuste...">
+          </div>
+        </div>
+        <div class="execute-result" id="cb-ajuste-result"></div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button class="btn-nueva-orden" data-action="ejecutar-ajuste-bot">Confirmar ajuste</button>
+          <button class="btn-cerrar"      data-action="ejecutar-reconciliar-bot" title="Recalcula el balance sumando todos los movimientos">Reconciliar balance</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL POSICIONES BOT ──────────────────────────────── -->
+<div class="modal-overlay" id="modalPosicionesBot" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="posicionesBotTitulo">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="posicionesBotTitulo">Posiciones: —</div>
+        <div class="modal-subtitle">Inventario acumulado por especie (calculado desde ejecuciones)</div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="posicionesBotContent">
+        <div class="spinner"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cerrar" data-action="cerrar-modal">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL INSTRUMENTO ────────────────────────────────── -->
+<div class="modal-overlay" id="modalInstrumento" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="modalInstTitulo">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalInstTitulo">Nuevo Instrumento</div>
+        <div class="modal-subtitle">Complete los datos del instrumento</div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal" aria-label="Cerrar">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="inst-id">
+      <div class="admin-tabs" style="margin-bottom:14px">
+        <button class="admin-tab active" id="instSubTab-base"   data-action="switch-inst-tab" data-tab="base">General</button>
+        <button class="admin-tab"        id="instSubTab-rf"     data-action="switch-inst-tab" data-tab="rf" style="display:none">Renta Fija</button>
+        <button class="admin-tab"        id="instSubTab-futuro" data-action="switch-inst-tab" data-tab="futuro" style="display:none">Futuro ROFEX</button>
+        <button class="admin-tab"        id="instSubTab-margen" data-action="switch-inst-tab" data-tab="margen" style="display:none">Llamados Margen</button>
+      </div>
+      <div id="instTab-base">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Especie</label>
+            <input type="text" id="inst-especie" placeholder="AL30D" maxlength="20">
+          </div>
+          <div class="form-group">
+            <label>Tipo</label>
+            <select id="inst-tipo">
+              <option value="ACCION">ACCION</option>
+              <option value="RENTA_FIJA">RENTA_FIJA</option>
+              <option value="FUTURO">FUTURO</option>
+              <option value="CAUCION">CAUCION</option>
+              <option value="CPD">CPD</option>
+              <option value="FX">FX</option>
+              <option value="OTRO">OTRO</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Moneda</label>
+            <select id="inst-moneda">
+              <option value="ARP">ARP</option>
+              <option value="USD">USD</option>
+              <option value="USX">USX</option>
+              <option value="EUR">EUR</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Mercado Principal</label>
+            <input type="text" id="inst-mercado" placeholder="BYMA" maxlength="20">
+          </div>
+          <div class="form-group" style="grid-column:span 2">
+            <label>Descripción</label>
+            <input type="text" id="inst-descripcion" placeholder="Descripción opcional" maxlength="300">
+          </div>
+        </div>
+      </div>
+      <div id="instTab-rf" style="display:none">
+        <div class="form-grid">
+          <div class="form-group"><label>TIR referencia (%)</label><input type="number" id="rf-tir" step="0.01" placeholder="ej: 8.50"></div>
+          <div class="form-group"><label>Duration (años)</label><input type="number" id="rf-duration" step="0.01" placeholder="ej: 3.2"></div>
+          <div class="form-group"><label>Fecha vencimiento</label><input type="date" id="rf-vencimiento"></div>
+          <div class="form-group"><label>Precio sucio</label><input type="number" id="rf-precio-sucio" step="0.0001" placeholder="ej: 53.25"></div>
+          <div class="form-group"><label>Precio limpio</label><input type="number" id="rf-precio-limpio" step="0.0001" placeholder="ej: 51.00"></div>
+          <div class="form-group"><label>Tasa cupón (%)</label><input type="number" id="rf-cupon" step="0.01" placeholder="ej: 5.00"></div>
+          <div class="form-group">
+            <label>Frecuencia cupón</label>
+            <select id="rf-frecuencia">
+              <option value="">— sin cupón —</option>
+              <option value="MENSUAL">MENSUAL</option>
+              <option value="TRIMESTRAL">TRIMESTRAL</option>
+              <option value="SEMESTRAL">SEMESTRAL</option>
+              <option value="ANUAL">ANUAL</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Moneda emisión</label><input type="text" id="rf-moneda-emision" maxlength="5" placeholder="USD"></div>
+          <div class="form-group"><label>Emisor</label><input type="text" id="rf-emisor" maxlength="100" placeholder="Min. Economía"></div>
+          <div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="rf-amortiza"> Amortiza capital</label></div>
+        </div>
+        <div style="margin-top:10px">
+          <button class="btn-nueva-orden" data-action="guardar-detalle-rf">Guardar detalle RF</button>
+          <span id="rfResult" class="execute-result" style="display:inline-block;margin-left:10px"></span>
+        </div>
+      </div>
+      <div id="instTab-futuro" style="display:none">
+        <div class="form-grid">
+          <div class="form-group"><label>Contrato</label><input type="text" id="fut-contrato" placeholder="RFX20Ago25" maxlength="20"></div>
+          <div class="form-group"><label>Activo subyacente</label><input type="text" id="fut-subyacente" placeholder="Dólar" maxlength="50"></div>
+          <div class="form-group"><label>Mes vencimiento</label><input type="date" id="fut-vencimiento"></div>
+          <div class="form-group"><label>Precio ajuste</label><input type="number" id="fut-precio-ajuste" step="0.01" placeholder="ej: 1250.00"></div>
+          <div class="form-group"><label>Margen inicial (ARS)</label><input type="number" id="fut-margen-inicial" step="0.01" placeholder="ej: 15000"></div>
+          <div class="form-group"><label>Margen variación (ARS)</label><input type="number" id="fut-margen-var" step="0.01" placeholder="ej: 3000"></div>
+          <div class="form-group"><label>Tick size</label><input type="number" id="fut-tick" step="0.0001" placeholder="ej: 0.01"></div>
+          <div class="form-group"><label>Multiplicador</label><input type="number" id="fut-multiplicador" step="0.01" value="1" placeholder="ej: 1000"></div>
+        </div>
+        <div style="margin-top:10px">
+          <button class="btn-nueva-orden" data-action="guardar-detalle-futuro">Guardar detalle Futuro</button>
+          <span id="futResult" class="execute-result" style="display:inline-block;margin-left:10px"></span>
+        </div>
+      </div>
+      <div id="instTab-margen" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:11px;color:var(--text3)">Llamados a margen para este instrumento</div>
+          <button class="btn-nueva-orden" data-action="abrir-modal-llamado">+ Nuevo llamado</button>
+        </div>
+        <div class="table-wrap" style="max-height:260px;overflow-y:auto">
+          <table class="orders-table mini-table">
+            <thead><tr><th>Fecha</th><th>Cuenta</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <tbody id="llamadosBody"><tr><td colspan="5" class="text-muted">&#8212;</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="execute-result" id="instResult" style="margin-top:10px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cerrar" data-action="cerrar-modal">Cerrar</button>
+      <button class="btn-nueva-orden" id="instGuardarBtn" data-action="guardar-instrumento">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL LLAMADO MARGEN ──────────────────────────────── -->
+<div class="modal-overlay" id="modalLlamado" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="modalLlamadoTitulo">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalLlamadoTitulo">Nuevo Llamado a Margen</div>
+        <div class="modal-subtitle">Instrumento: <span id="llamadoInstEspecie">&#8212;</span></div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal" aria-label="Cerrar">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group"><label>Fecha</label><input type="date" id="lm-fecha"></div>
+        <div class="form-group"><label>Cuenta ID</label><input type="number" id="lm-cuenta" min="1" placeholder="ID de la cuenta"></div>
+        <div class="form-group"><label>Monto (ARS)</label><input type="number" id="lm-monto" step="0.01" min="0.01" placeholder="0.00"></div>
+        <div class="form-group" style="grid-column:span 2"><label>Descripción</label><input type="text" id="lm-descripcion" maxlength="300" placeholder="Opcional"></div>
+      </div>
+      <div class="execute-result" id="llamadoResult"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cerrar" data-action="cerrar-modal">Cancelar</button>
+      <button class="btn-nueva-orden" data-action="guardar-llamado">Crear llamado</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL CONTRAPARTE ─────────────────────────────────── -->
+<div class="modal-overlay" id="modalContraparte" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="modalCpTitulo">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalCpTitulo">Nueva Contraparte</div>
+        <div class="modal-subtitle">Complete los datos</div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal" aria-label="Cerrar">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cp-id">
+      <div class="form-grid">
+        <div class="form-group"><label>Código</label><input type="text" id="cp-codigo" maxlength="20" placeholder="BYMA"></div>
+        <div class="form-group"><label>Nombre</label><input type="text" id="cp-nombre" maxlength="100" placeholder="Bolsa y Mercados Argentinos"></div>
+        <div class="form-group">
+          <label>Tipo</label>
+          <select id="cp-tipo">
+            <option value="MERCADO">MERCADO</option>
+            <option value="BANCO">BANCO</option>
+            <option value="ALyC">ALyC</option>
+            <option value="OTRO">OTRO</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:8px">Límite de crédito (opcional)</div>
+        <div class="form-grid">
+          <div class="form-group"><label>Moneda</label><select id="cp-lim-moneda"><option value="ARP">ARP</option><option value="USD">USD</option></select></div>
+          <div class="form-group"><label>Límite</label><input type="number" id="cp-lim-valor" step="0.01" min="0" placeholder="ej: 50000000"></div>
+          <div class="form-group"><label>Alerta (%)</label><input type="number" id="cp-lim-alerta" step="1" min="1" max="100" value="80"></div>
+        </div>
+      </div>
+      <div class="execute-result" id="cpResult"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cerrar" data-action="cerrar-modal">Cancelar</button>
+      <button class="btn-nueva-orden" data-action="guardar-contraparte">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL LÍMITE RIESGO ───────────────────────────────── -->
+<div class="modal-overlay" id="modalLimiteRiesgo" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="modalLimRiesgoTitulo">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalLimRiesgoTitulo">Nuevo Límite de Riesgo</div>
+        <div class="modal-subtitle">Configure el límite</div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal" aria-label="Cerrar">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="lr-id">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Owner Type</label>
+          <select id="lr-owner-type"><option value="GLOBAL">GLOBAL</option><option value="CLIENTE">CLIENTE</option><option value="INSTRUMENTO">INSTRUMENTO</option></select>
+        </div>
+        <div class="form-group"><label>Owner ID (opcional)</label><input type="number" id="lr-owner-id" placeholder="dejar vacío para GLOBAL"></div>
+        <div class="form-group">
+          <label>Tipo Límite</label>
+          <select id="lr-tipo">
+            <option value="CONCENTRACION_MAX">CONCENTRACION_MAX</option>
+            <option value="PERDIDA_DIARIA_MAX">PERDIDA_DIARIA_MAX</option>
+            <option value="VOLUMEN_DIARIO_MAX">VOLUMEN_DIARIO_MAX</option>
+            <option value="POSICION_NETA_MAX">POSICION_NETA_MAX</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Especie (opcional)</label><input type="text" id="lr-especie" maxlength="20" placeholder="GGAL"></div>
+        <div class="form-group"><label>Moneda</label><select id="lr-moneda"><option value="ARP">ARP</option><option value="USD">USD</option></select></div>
+        <div class="form-group"><label>Valor límite</label><input type="number" id="lr-valor" step="0.01" min="0" placeholder="ej: 10000000"></div>
+        <div class="form-group"><label>Alerta (%)</label><input type="number" id="lr-alerta" step="1" min="1" max="100" value="80"></div>
+      </div>
+      <div class="execute-result" id="lrResult"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cerrar" data-action="cerrar-modal">Cancelar</button>
+      <button class="btn-nueva-orden" data-action="guardar-limite-riesgo">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- STATUS BAR ────────────────────────────────────────────── -->
+<footer class="statusbar">
+  <div class="status-left">
+    <span class="status-dot dot-green" id="status-conn" title="Estado de conexión" aria-label="Estado de conexión: Conectando"></span>
+    <span id="status-text">Conectando...</span>
+  </div>
+  <div class="status-center" id="status-event" aria-live="polite" aria-atomic="true"></div>
+  <div class="status-right" title="Atajos: N=Nueva Orden · R=Actualizar · 1-7=Vistas · Ctrl+K=Buscar · Esc=Cerrar modal" style="cursor:help"><span id="status-clock" style="font-family:'IBM Plex Mono',monospace;margin-right:8px;opacity:0.8"></span>Rueda Portfolio v2.0.0</div>
+</footer>
+
+<!-- ── MODAL DETALLE ORDEN ───────────────────────────────────── -->
+<div class="modal-overlay" id="modalDetalle" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="modalOrdenNro">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalOrdenNro">—</div>
+        <div class="modal-subtitle" id="modalOrdenInfo">—</div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal-directo" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="detail-grid" id="modalDetallGrid"></div>
+      <div class="modal-section-title">Ejecuciones</div>
+      <table class="orders-table mini-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Cantidad</th>
+            <th>Precio</th>
+            <th>Comisión</th>
+            <th>Mercado</th>
+            <th>Seq</th>
+          </tr>
+        </thead>
+        <tbody id="modalEjecuciones">
+          <tr><td colspan="6" class="text-muted">Sin ejecuciones</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Inline modify form (hidden by default) -->
+      <div id="modalModifyForm" style="display:none; margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
+        <div class="execute-form-title">Modificar Orden</div>
+        <div class="execute-form-grid">
+          <div class="form-group">
+            <label>Nuevo Precio Límite</label>
+            <input type="number" id="mod-precio" placeholder="dejar vacío para no cambiar" step="0.01" min="0.01">
+          </div>
+          <div class="form-group">
+            <label>Nueva Cantidad Total</label>
+            <input type="number" id="mod-cantidad" placeholder="dejar vacío para no cambiar" min="1">
+          </div>
+          <div class="form-group">
+            <label>&nbsp;</label>
+            <button class="btn-nueva-orden" data-action="confirmar-modificacion">Confirmar</button>
+          </div>
+        </div>
+        <div class="execute-result" id="modResult"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cerrar" data-action="cerrar-modal-directo">Cerrar</button>
+      <button class="btn-export" data-action="duplicar-orden" title="Pre-llenar nueva orden con estos datos">Duplicar</button>
+      <button class="btn-export" id="btnModificar" data-action="toggle-modify-form" style="margin-left:auto">Modificar</button>
+      <button class="btn-danger" id="btnCancelarOrden" data-action="cancelar-orden-modal" style="padding:7px 14px; font-size:11px">Cancelar Orden</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL NUEVA ORDEN ─────────────────────────────────────── -->
+<div class="modal-overlay" id="modalNuevaOrden" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="nuevaOrdenTitulo">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="nuevaOrdenTitulo">Nueva Orden</div>
+        <div class="modal-subtitle">Ingrese los datos de la orden</div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body orden-modal-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label title="LIMC = Compra Límite · LIMV = Venta Límite">Tipo Orden</label>
+          <select id="f-tipo">
+            <option value="LIMC">LIMC — Compra Límite</option>
+            <option value="LIMV">LIMV — Venta Límite</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label title="Ticker del instrumento. Ej: GGAL, MOLI, TX24, AL30D">Especie</label>
+          <input type="text" id="f-especie" placeholder="GGAL, MOLI, TX24..." list="especies-list" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label title="ARP = Peso Argentino · USD = Dólar">Moneda</label>
+          <select id="f-moneda">
+            <option value="ARP">ARP — Peso</option>
+            <option value="USD">USD — Dólar</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label title="LIMITE = precio fijo · MERCADO = ejecuta al mejor precio disponible">Tipo Precio</label>
+          <select id="f-tipo-precio">
+            <option value="LIMITE">LIMITE — Precio fijo</option>
+            <option value="MERCADO">MERCADO — A mercado</option>
+          </select>
+        </div>
+        <div class="form-group" id="f-precio-group">
+          <label title="Precio máximo de compra (LIMC) o mínimo de venta (LIMV)">Precio Límite</label>
+          <input type="number" id="f-precio" placeholder="0.00" step="0.01">
+        </div>
+        <div class="form-group">
+          <label title="Número total de nominales / lotes a operar">Cantidad Total</label>
+          <input type="number" id="f-cantidad" placeholder="0">
+          <span id="f-importe-preview" style="font-size:11px;color:var(--text2);font-family:var(--font-mono);margin-top:3px;display:block">Importe est.: —</span>
+        </div>
+        <div class="form-group">
+          <label title="DAY = hasta fin del día · IOC = inmediata o cancela parcial · FOK = todo o nada · GTD = hasta fecha">TIF</label>
+          <select id="f-tif">
+            <option value="DAY">DAY — Fin del día</option>
+            <option value="IOC">IOC — Inmediata o Cancela</option>
+            <option value="FOK">FOK — Todo o Nada</option>
+            <option value="GTD">GTD — Hasta fecha</option>
+          </select>
+        </div>
+        <div class="form-group" id="f-fecha-exp-group" style="display:none">
+          <label>Fecha Expiración (GTD)</label>
+          <input type="date" id="f-fecha-exp">
+        </div>
+        <div class="form-group">
+          <label title="Cliente al que se imputa la orden">Cliente</label>
+          <select id="f-cliente">
+            <option value="STD">STD — Cartera Propia STD</option>
+          </select>
+        </div>
+        <div class="form-group" style="display:none">
+          <input type="hidden" id="f-razon" value="Cartera Propia STD">
+        </div>
+      </div>
+
+      <!-- Opciones avanzadas: Iceberg y Stop/TP -->
+      <div style="margin-top:10px; border-top:1px solid var(--border); padding-top:10px">
+        <button type="button" class="btn-mini" data-action="toggle-op-avanz" id="btnOpAvanz" style="margin-bottom:8px">
+          ▶ Opciones avanzadas (Iceberg / Stop-Loss / Take-Profit)
+        </button>
+        <div id="opcionesAvanzadas" style="display:none">
+          <div class="form-grid">
+            <div class="form-group">
+              <label title="Desk de trading para atribución de P&L por centro de costo. Si no se indica, se usa el desk del operador logueado.">Desk (Centro de Costo)</label>
+              <select id="f-desk">
+                <option value="">Auto (del operador)</option>
+                <option value="ACCIONES">ACCIONES</option>
+                <option value="RENTA_FIJA">RENTA_FIJA</option>
+                <option value="DERIVADOS">DERIVADOS</option>
+                <option value="FCI">FCI</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label title="Cantidad visible en el orderbook; oculta el resto (iceberg). Dejar vacío para orden normal.">Cant. Visible (Iceberg)</label>
+              <input type="number" id="f-cant-visible" placeholder="dejar vacío si no es iceberg" min="1">
+            </div>
+            <div class="form-group">
+              <label title="STOP_LOSS = activa cuando precio cruza en tu contra · TAKE_PROFIT = activa al llegar al objetivo">Tipo Activación</label>
+              <select id="f-tipo-activacion">
+                <option value="">Sin activación condicional</option>
+                <option value="STOP_LOSS">STOP_LOSS</option>
+                <option value="TAKE_PROFIT">TAKE_PROFIT</option>
+              </select>
+            </div>
+            <div class="form-group" id="f-precio-activacion-group" style="display:none">
+              <label title="Precio de mercado que dispara la activación de la orden">Precio Activación</label>
+              <input type="number" id="f-precio-activacion" placeholder="0.00" step="0.01" min="0.01">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ob-panel" id="obPanel">
+        <div class="ob-placeholder">Ingresá una especie para ver las puntas</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cerrar" data-action="cerrar-modal">Cancelar</button>
+      <button class="btn-nueva-orden" data-action="enviar-nueva-orden">Confirmar Orden</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL OPERADOR (Feature 15) ─────────────────────────── -->
+<div class="modal-overlay" id="modalOperador" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="modalOperadorTitle">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalOperadorTitle">Nuevo Operador</div>
+        <div class="modal-subtitle">Asignación de desk por usuario</div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="opId">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Nombre</label>
+          <input type="text" id="opNombre" placeholder="Nombre completo">
+        </div>
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="opUsername" placeholder="username del sistema">
+        </div>
+        <div class="form-group">
+          <label>Desk</label>
+          <select id="opDesk">
+            <option value="ACCIONES">ACCIONES</option>
+            <option value="RENTA_FIJA">RENTA_FIJA</option>
+            <option value="DERIVADOS">DERIVADOS</option>
+            <option value="FCI">FCI</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label title="Cliente al que se imputan las órdenes de este operador (deja vacío si opera para múltiples clientes)">Cliente vinculado</label>
+          <select id="opClienteCodigo">
+            <option value="">— Sin vincular —</option>
+          </select>
+        </div>
+      </div>
+      <div class="execute-result" id="opResult" style="margin-top:8px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cerrar" data-action="cerrar-modal">Cancelar</button>
+      <button class="btn-nueva-orden" data-action="guardar-operador">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL RESET CONFIRMACIÓN ──────────────────────────────── -->
+<div class="modal-overlay" id="modalConfirmReset" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="resetTitulo">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="resetTitulo" style="color:var(--red)">⚠ Acción Destructiva</div>
+        <div class="modal-subtitle">Esta operación no se puede deshacer</div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px">
+        Esto eliminará <strong>TODOS los datos</strong> y re-sembrará la base de datos con datos iniciales.
+      </p>
+      <div class="form-group">
+        <label>Escribí <code>RESET</code> para confirmar</label>
+        <input type="text" id="resetConfirmInput" placeholder="RESET" autocomplete="off"
+               >
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" data-action="cerrar-modal">Cancelar</button>
+      <button class="btn-danger" id="btnEjecutarReset" data-action="ejecutar-reset" disabled>Confirmar Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL GRÁFICO ─────────────────────────────────────────── -->
+<div class="modal-overlay" id="modalGrafico" data-action="cerrar-modal" role="dialog" aria-modal="true" aria-labelledby="graficoEspecie">
+  <div class="modal modal-chart">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="graficoEspecie">—</div>
+        <div class="modal-subtitle" id="graficoPrecio"></div>
+        <span id="chartBullBearPhase" style="display:none;font-size:11px;font-weight:700;letter-spacing:.03em;margin-top:2px;display:none"></span>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-grafico" aria-label="Cerrar">✕</button>
+    </div>
+    <!-- Toolbar -->
+    <div class="chart-toolbar">
+      <!-- Fuente / modo -->
+      <div class="chart-tf-group">
+        <span style="font-size:10px;color:var(--text3);margin-right:4px">Fuente:</span>
+        <button class="chart-tf-btn active" data-action="cambiar-modo-grafico" data-mode="mercado">Mercado</button>
+        <button class="chart-tf-btn" data-action="cambiar-modo-grafico" data-mode="sistema">Sistema</button>
+      </div>
+      <div class="chart-sep"></div>
+      <!-- Temporalidad -->
+      <div class="chart-tf-group">
+        <span style="font-size:10px;color:var(--text3);margin-right:4px">Temporalidad:</span>
+        <select id="chartIntervalo" class="chart-select">
+          <optgroup label="MINUTOS">
+            <option value="15m">15 min</option>
+            <option value="30m">30 min</option>
+            <option value="45m">45 min ≈</option>
+          </optgroup>
+          <optgroup label="HORAS">
+            <option value="1h">1 hora</option>
+            <option value="2h">2 horas</option>
+            <option value="3h">3 horas</option>
+            <option value="4h">4 horas</option>
+          </optgroup>
+          <optgroup label="DÍAS">
+            <option value="1d" selected>1 día</option>
+            <option value="1w">1 semana</option>
+            <option value="1mo">1 mes</option>
+            <option value="3mo">3 meses</option>
+          </optgroup>
+        </select>
+      </div>
+      <div class="chart-sep"></div>
+      <!-- Indicadores -->
+      <div class="chart-ind-group">
+        <span style="font-size:10px;color:var(--text3);margin-right:4px">Indicadores:</span>
+        <button class="chart-ind-btn active" data-action="toggle-indicador" data-ind="sma20">SMA 20</button>
+        <button class="chart-ind-btn active" data-action="toggle-indicador" data-ind="sma50">SMA 50</button>
+        <button class="chart-ind-btn" data-action="toggle-indicador" data-ind="ema20">EMA 20</button>
+        <button class="chart-ind-btn" data-action="toggle-indicador" data-ind="bb">Bollinger</button>
+        <button class="chart-ind-btn" data-action="toggle-indicador" data-ind="rsi">RSI 14</button>
+        <button class="chart-ind-btn" data-action="toggle-indicador" data-ind="macd">MACD</button>
+        <button class="chart-ind-btn" data-action="toggle-indicador" data-ind="bullbear" title="Detecta fases Bull/Bear con la regla del 20%">Bull/Bear</button>
+      </div>
+    </div>
+    <!-- Chart panes -->
+    <div class="modal-body chart-body">
+      <div class="chart-pane-label">Precio</div>
+      <div id="chartMainContainer" style="width:100%;height:360px"></div>
+      <div class="chart-pane-label" id="chartRsiLabel" style="display:none">RSI (14) — sobrecompra: 70 · sobreventa: 30</div>
+      <div id="chartRsiContainer" style="width:100%;height:120px;display:none;margin-top:2px"></div>
+      <div class="chart-pane-label" id="chartMacdLabel" style="display:none">MACD (12, 26, 9)</div>
+      <div id="chartMacdContainer" style="width:100%;height:120px;display:none;margin-top:2px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── TOAST CONTAINER ──────────────────────────────────────── -->
+<!-- ── RECONNECT BANNER ──────────────────────────────────────── -->
+<div id="reconnect-banner" style="display:none;position:fixed;top:var(--header-h,44px);left:0;right:0;z-index:5000;background:#CC6600;color:#fff;padding:6px 16px;font-size:12px;align-items:center;justify-content:center;gap:10px;border-bottom:2px solid #994400">
+  <span class="spinner-inline" style="border-color:rgba(255,255,255,0.4);border-top-color:#fff"></span>
+  Intentando reconectar al servidor... La interfaz se actualizará automáticamente.
+</div>
+
+<div id="toast-container" aria-live="assertive" aria-atomic="true"></div>
+
+<datalist id="especies-list"></datalist>
+<script src="/static/js/main.js"></script>
+</body>
+</html>

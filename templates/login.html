@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rueda Portfolio — Iniciar sesión</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/css/fonts.css">
+<link rel="stylesheet" href="/static/css/main.css">
+<script src="/static/js/theme-init.js"></script>
+<style>
+  .login-wrap {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-body, #d4d0c8);
+  }
+  .login-card {
+    background: var(--bg-panel, #ece9d8);
+    border: 2px solid var(--border-raised, #ffffff);
+    border-right-color: var(--border-shadow, #808080);
+    border-bottom-color: var(--border-shadow, #808080);
+    padding: 0;
+    width: 340px;
+    box-shadow: 2px 2px 6px rgba(0,0,0,0.3);
+  }
+  .login-titlebar {
+    background: linear-gradient(to right, #0a246a, #3a6ea5);
+    color: #fff;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-ui, 'IBM Plex Sans', sans-serif);
+  }
+  .login-titlebar-icon {
+    width: 16px; height: 16px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .login-body {
+    padding: 24px 28px 28px;
+  }
+  .login-logo {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .login-logo svg {
+    width: 36px; height: 36px;
+    stroke: var(--accent-primary, #0a246a);
+  }
+  .login-logo .brand-text {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary, #000);
+    margin-top: 6px;
+    font-family: var(--font-ui, 'IBM Plex Sans', sans-serif);
+  }
+  .login-logo .brand-sub {
+    font-size: 11px;
+    color: var(--text-secondary, #555);
+    font-family: var(--font-mono, 'IBM Plex Mono', monospace);
+  }
+  .login-field {
+    margin-bottom: 14px;
+  }
+  .login-field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary, #000);
+    margin-bottom: 4px;
+    font-family: var(--font-ui, 'IBM Plex Sans', sans-serif);
+  }
+  .login-field input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 8px;
+    font-size: 13px;
+    border: 2px inset var(--border-shadow, #808080);
+    background: var(--bg-input, #fff);
+    font-family: var(--font-ui, 'IBM Plex Sans', sans-serif);
+    outline: none;
+  }
+  .login-field input:focus {
+    border-color: var(--accent-primary, #0a246a);
+  }
+  .login-btn {
+    width: 100%;
+    padding: 6px 12px;
+    margin-top: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: var(--font-ui, 'IBM Plex Sans', sans-serif);
+    background: var(--bg-panel, #ece9d8);
+    border: 2px solid;
+    border-top-color: var(--border-raised, #ffffff);
+    border-left-color: var(--border-raised, #ffffff);
+    border-right-color: var(--border-shadow, #808080);
+    border-bottom-color: var(--border-shadow, #808080);
+    cursor: pointer;
+    color: var(--text-primary, #000);
+    letter-spacing: 0.02em;
+  }
+  .login-btn:hover { background: #ddd9c8; }
+  .login-btn:active {
+    border-top-color: var(--border-shadow, #808080);
+    border-left-color: var(--border-shadow, #808080);
+    border-right-color: var(--border-raised, #ffffff);
+    border-bottom-color: var(--border-raised, #ffffff);
+  }
+  .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .login-error {
+    margin-top: 12px;
+    padding: 6px 10px;
+    background: #fff0f0;
+    border: 1px solid #cc0000;
+    color: #cc0000;
+    font-size: 12px;
+    font-family: var(--font-ui, 'IBM Plex Sans', sans-serif);
+    display: none;
+  }
+  .login-error.visible { display: block; }
+</style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-titlebar">
+      <span class="login-titlebar-icon">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <polyline points="14 4 8.5 10 5.5 7 1 11"></polyline>
+          <polyline points="10 4 14 4 14 8"></polyline>
+        </svg>
+      </span>
+      Rueda Portfolio — Acceso al sistema
+    </div>
+
+    <div class="login-body">
+      <div class="login-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+          <polyline points="16 7 22 7 22 13"></polyline>
+        </svg>
+        <div class="brand-text">Rueda Portfolio</div>
+        <div class="brand-sub">v2.0.0 — Mesa de Dinero</div>
+      </div>
+
+      <form id="login-form" method="post" autocomplete="on">
+        <div class="login-field">
+          <label for="username">Usuario</label>
+          <input type="text" id="username" name="username" autofocus autocomplete="username" placeholder="usuario">
+        </div>
+        <div class="login-field">
+          <label for="password">Contraseña</label>
+          <input type="password" id="password" name="password" autocomplete="current-password" placeholder="••••••••">
+        </div>
+
+        <button type="submit" class="login-btn" id="login-btn">Iniciar sesión</button>
+
+        <div class="login-error" id="login-error"></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/login.js"></script>
+</body>
+</html>
