@@ -3,6 +3,14 @@
    ══════════════════════════════════════════════════════════════════════════════ */
 
 :root {
+  /* ── Spacing scale (B29) ─────────────────────────────────────── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
   /* ── Luna Blue palette ───────────────────────────────────────── */
   --bg:      #D4D0C8;   /* classic Classicsilver desktop                            */
   --bg2:     #ECE9D8;   /* lighter silver — sidebar, panel bodies               */
@@ -2899,6 +2907,30 @@ input:focus-visible {
 
 /* Persistent toast — no auto-dismiss, subtle pulsing border (M18) */
 .toast-persist { box-shadow: 0 0 0 2px var(--red) !important; }
+
+/* ── HELP INDICATOR ON LABELS (B37) ──────────────────────────────────────── */
+/* Labels with a title attribute show a subtle ? indicator to hint at tooltip */
+label[title]::after {
+  content: ' ⓘ';
+  font-size: 9px;
+  color: var(--text3);
+  vertical-align: super;
+  cursor: help;
+  opacity: 0.7;
+}
+label[title]:hover::after { opacity: 1; color: var(--accent); }
+
+/* ── FOCUS-VISIBLE RESTORATION (B32) ─────────────────────────────────────── */
+/* Elements that suppress outline must still show focus ring for keyboard nav */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px !important;
+}
 
 /* ── RESPONSIVE — ≤ 375px (small phone) (A3) ─────────────────────────────── */
 @media (max-width: 375px) {

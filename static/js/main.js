@@ -1,8 +1,13 @@
 // ── CONSTANTS ──────────────────────────────────────────────────────────────
-const TOAST_DURATION_OK    = 3500;  // ms — success/info toasts
-const TOAST_DURATION_ERROR = 6000;  // ms — error toasts stay longer
-const MOV_PER_PAGE         = 20;    // rows per page for movement tables
-const LIQ_PER_PAGE         = 50;    // rows per page for liquidaciones
+const TOAST_DURATION_OK       = 3500;  // ms — success/info toasts
+const TOAST_DURATION_ERROR    = 6000;  // ms — error toasts stay longer
+const MOV_PER_PAGE            = 20;    // rows per page for movement tables
+const LIQ_PER_PAGE            = 50;    // rows per page for liquidaciones
+const OB_DEBOUNCE_MS          = 600;   // ms — orderbook fetch debounce
+const SEARCH_DEBOUNCE_MS      = 180;   // ms — global search debounce
+const RECONNECT_FAIL_MS       = 30_000; // ms — show "Sin conexión" banner after this
+const CONFIRM_AUTODISMISS_MS  = 10 * 60 * 1000; // 10 min — auto-close stale confirm dialogs
+const STATUS_EVENT_DURATION_MS = 5000; // ms — how long status event text stays visible
 
 // ── TOAST SYSTEM ───────────────────────────────────────────────────────────
 /**
@@ -105,6 +110,22 @@ function esc(s) {
 function debounce(fn, ms = 300) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+// ── ERROR LOGGING (B38) ────────────────────────────────────────────────────
+/**
+ * Centralized error logger. Drop-in for console.error that can be wired
+ * to a monitoring service (Sentry, LogRocket, etc.) without changing call sites.
+ * Add ?debug=1 to the URL to see stack traces in the browser console.
+ */
+function _logError(context, err) {
+  const isDebug = new URLSearchParams(window.location.search).has('debug');
+  if (isDebug) {
+    console.error(`[${context}]`, err);
+  } else {
+    console.warn(`[${context}] ${err?.message || err}`);
+  }
+  // Replace this comment with: Sentry.captureException(err, { extra: { context } });
 }
 
 // ── CENTRALIZED API ERROR MESSAGES (C2) ────────────────────────────────────
@@ -300,7 +321,7 @@ function initSocket() {
         const span = b.querySelector('span') || b;
         if (span) span.textContent = 'Sin conexión con el servidor. Recargá la página para reconectar.';
       }
-    }, 30_000);
+    }, RECONNECT_FAIL_MS);
   });
 
   state.socket.on('reconnect', () => {
@@ -426,7 +447,7 @@ function _updateSidebarDots(color) {
 function setStatusEvent(msg) {
   const el = document.getElementById('status-event');
   el.textContent = msg;
-  setTimeout(() => { el.textContent = ''; }, 5000);
+  setTimeout(() => { el.textContent = ''; }, STATUS_EVENT_DURATION_MS);
 }
 
 // ── NAVEGACIÓN ─────────────────────────────────────────────────────────────
@@ -1175,6 +1196,25 @@ function duplicarOrden() {
 }
 
 // ── NUEVA ORDEN ────────────────────────────────────────────────────────────
+/** Resets all fields of the Nueva Orden form to their default state. */
+function _resetNuevaOrdenForm() {
+  ['f-especie', 'f-precio', 'f-cantidad', 'f-cant-visible', 'f-precio-activacion', 'f-fecha-exp'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  document.getElementById('f-tipo').value = 'LIMC';
+  document.getElementById('f-moneda').value = 'ARP';
+  document.getElementById('f-tipo-precio').value = 'LIMITE';
+  document.getElementById('f-tif').value = 'DAY';
+  document.getElementById('f-tipo-activacion').value = '';
+  const fDesk = document.getElementById('f-desk'); if (fDesk) fDesk.value = '';
+  const fCliente = document.getElementById('f-cliente');
+  if (fCliente && !fCliente.disabled) fCliente.value = fCliente.options[0]?.value || '';
+  togglePrecioLimite();
+  toggleFechaExp();
+  togglePrecioActivacion();
+  _actualizarImporte();
+}
+
 function abrirModalOrden() {
   _pushModalFocus();
   document.getElementById('modalNuevaOrden').classList.add('active');
@@ -1226,7 +1266,7 @@ document.getElementById('f-especie').addEventListener('input', function () {
     return;
   }
   document.getElementById('obPanel').innerHTML = '<div class="ob-loading">Cargando puntas...</div>';
-  _obTimer = setTimeout(() => cargarOrderbook(esp), 600);
+  _obTimer = setTimeout(() => cargarOrderbook(esp), OB_DEBOUNCE_MS);
 });
 
 async function cargarOrderbook(especie) {
@@ -1411,21 +1451,7 @@ async function enviarNuevaOrden() {
     if (res.ok && result.success) {
       document.getElementById('modalNuevaOrden').classList.remove('active');
       _popModalFocus();
-      ['f-especie', 'f-precio', 'f-cantidad', 'f-cant-visible', 'f-precio-activacion', 'f-fecha-exp'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.value = '';
-      });
-      document.getElementById('f-tipo').value = 'LIMC';
-      document.getElementById('f-moneda').value = 'ARP';
-      document.getElementById('f-tipo-precio').value = 'LIMITE';
-      document.getElementById('f-tif').value = 'DAY';
-      document.getElementById('f-tipo-activacion').value = '';
-      const fDesk = document.getElementById('f-desk'); if (fDesk) fDesk.value = '';
-      const fCliente = document.getElementById('f-cliente'); if (fCliente && !fCliente.disabled) fCliente.value = fCliente.options[0]?.value || '';
-      togglePrecioLimite();
-      toggleFechaExp();
-      togglePrecioActivacion();
-      _actualizarImporte();
+      _resetNuevaOrdenForm();
       state.currentPage = 1;
       cargarOrdenes(false);
 
@@ -1441,6 +1467,7 @@ async function enviarNuevaOrden() {
     }
   } catch(e) {
     if (e.message !== '401 No autenticado — redirigiendo al login') {
+      _logError('enviarNuevaOrden', e);
       showToast('Error de red al crear la orden. Verificá tu conexión.', 'error');
     }
   } finally {
@@ -1610,7 +1637,7 @@ document.getElementById('globalSearch').addEventListener('input', function() {
     document.querySelectorAll(`#${tbodyId} tr[data-id], #${tbodyId} tr[data-especie]`).forEach(row => {
       row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
     });
-  }, 180);
+  }, SEARCH_DEBOUNCE_MS);
 });
 
 // ── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────────
@@ -3150,7 +3177,7 @@ function _calcMACD(data, fast = 12, slow = 26, signal = 9) {
 
 // ── THEME ──────────────────────────────────────────────────────────────────
 const _THEMES = ['xp', 'sap', 'legacy', 'dark', 'aero'];
-const _THEME_LABELS = { xp: 'DEF', sap: 'MOD', legacy: 'CLÁ', dark: 'OSC', aero: 'AER' };
+const _THEME_LABELS = { xp: 'Clásico', sap: 'Moderno', legacy: 'Retro', dark: 'Oscuro', aero: 'Aero' };
 
 function _applyTheme(theme) {
   const html = document.documentElement;
@@ -3159,7 +3186,15 @@ function _applyTheme(theme) {
   if (theme === 'legacy') html.classList.add('theme-legacy');
   if (theme === 'dark')   html.classList.add('theme-dark');
   if (theme === 'aero')   html.classList.add('theme-aero');
-  document.getElementById('btnThemeToggle').textContent = _THEME_LABELS[theme] || 'DEF';
+  const label = _THEME_LABELS[theme] || 'Clásico';
+  const nextIdx = (_THEMES.indexOf(theme) + 1) % _THEMES.length;
+  const nextLabel = _THEME_LABELS[_THEMES[nextIdx]];
+  const btn = document.getElementById('btnThemeToggle');
+  if (btn) {
+    btn.textContent = label;
+    btn.title = `Tema actual: ${label} — clic para cambiar a ${nextLabel}`;
+    btn.setAttribute('aria-label', `Tema actual: ${label}. Clic para cambiar a ${nextLabel}`);
+  }
   localStorage.setItem('rueda-theme', theme);
 }
 
@@ -3659,7 +3694,7 @@ function _confirmar(titulo, msg, onConfirm) {
   overlay.addEventListener('remove', () => { clearTimeout(_confirmTimer); document.removeEventListener('keydown', onKey); }, { once: true });
 
   // Auto-dismiss after 10 minutes to prevent stale confirm dialogs
-  let _confirmTimer = setTimeout(() => cancel(), 10 * 60 * 1000);
+  let _confirmTimer = setTimeout(() => cancel(), CONFIRM_AUTODISMISS_MS);
 
   // Focus confirm button for keyboard accessibility
   overlay.querySelector('#btn-confirm-ok').focus();
@@ -4684,7 +4719,7 @@ async function toggleBotHorario(botId) {
       body: JSON.stringify({ respetar_horario: nuevo }),
     });
     await cargarBots();
-  } catch(e) { showToast('Error al cambiar horario del bot.', 'error'); }
+  } catch(e) { _logError('toggleHorarioBot', e); showToast('Error al cambiar horario del bot.', 'error'); }
 }
 
 async function setBulkHorario(respetar) {
@@ -5010,7 +5045,7 @@ async function resetDemoData() {
   const resEl = document.getElementById('demo-reset-result');
   _confirmar(
     '⚠ Reiniciar datos operativos',
-    'Se borrarán permanentemente: órdenes, ejecuciones, posiciones y movimientos de cuenta. Esta acción NO se puede deshacer.',
+    'Se borrarán PERMANENTEMENTE todas las órdenes, ejecuciones, posiciones y movimientos de cuenta del entorno demo. Los usuarios y configuración no se tocan. Esta acción NO se puede deshacer.',
     async () => {
       resEl.textContent = 'Eliminando...';
       _resetDemoDataExec(resEl);
@@ -5781,7 +5816,7 @@ async function abrirCierreDia() {
   const resEl = document.getElementById('pnlCierreDiaResult');
   _confirmar(
     'Cierre de día',
-    `¿Ejecutar cierre de día para ${fecha}? La operación es idempotente.`,
+    `¿Ejecutar cierre de día para ${fecha}? Se calcularán P&L realizados y no realizados para todas las posiciones abiertas. La operación es idempotente (se puede repetir sin efecto doble).`,
     async () => {
       resEl.style.color='var(--text2)';
       resEl.innerHTML='<span class="spinner-inline"></span> Procesando cierre de día...';
@@ -6203,7 +6238,7 @@ async function procesarLiquidaciones() {
   const resEl = document.getElementById('liquidResult');
   _confirmar(
     'Procesar liquidaciones EOD',
-    '¿Procesar el batch de liquidaciones de fin de día? Se marcarán como liquidadas todas las ejecuciones con fecha de liquidación vencida.',
+    'Se marcarán como liquidadas todas las ejecuciones con fecha de liquidación vencida a la fecha de hoy. Esta operación afecta el balance disponible de los clientes involucrados.',
     async () => {
       resEl.style.color='var(--text2)';
       resEl.innerHTML='<span class="spinner-inline"></span> Procesando liquidaciones...';
