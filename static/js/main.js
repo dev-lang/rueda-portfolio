@@ -86,6 +86,63 @@ function debounce(fn, ms = 300) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
+// ── CENTRALIZED API ERROR MESSAGES (C2) ────────────────────────────────────
+/**
+ * Extracts a user-friendly message from a failed API response.
+ * Differentiates: validation (400/422), forbidden (403), server (500), network.
+ */
+function _apiErrMsg(res, result, fallback = 'Error inesperado.') {
+  if (!res) return fallback;
+  const detail = result?.detail;
+  if (res.status === 422 || res.status === 400) {
+    if (Array.isArray(detail)) return detail.map(d => d.msg || d.message || JSON.stringify(d)).join(' · ');
+    return typeof detail === 'string' ? detail : fallback;
+  }
+  if (res.status === 403) return 'Sin permisos para realizar esta acción.';
+  if (res.status === 404) return 'Recurso no encontrado.';
+  if (res.status >= 500) return 'Error interno del servidor.';
+  if (detail?.mensaje) return detail.mensaje;
+  if (typeof detail === 'string') return detail;
+  return fallback;
+}
+
+// ── MODAL FOCUS MANAGER (C3) ───────────────────────────────────────────────
+/** Save/restore focus so keyboard users return to the trigger after closing. */
+const _modalFocusStack = [];
+function _pushModalFocus() { _modalFocusStack.push(document.activeElement); }
+function _popModalFocus()  {
+  const el = _modalFocusStack.pop();
+  if (el?.focus) requestAnimationFrame(() => el.focus());
+}
+
+// ── FIELD-LEVEL VALIDATION HELPERS (A1) ───────────────────────────────────
+/** Show an inline error message below the given form field wrapper. */
+function _setFieldError(fieldId, msg) {
+  const field = document.getElementById(fieldId);
+  if (!field) return;
+  field.classList.add('input-error');
+  let span = field.parentElement.querySelector('.field-error');
+  if (!span) { span = document.createElement('span'); span.className = 'field-error'; field.parentElement.appendChild(span); }
+  span.textContent = msg;
+}
+/** Clear all inline errors inside a form element. */
+function _clearFieldErrors(formEl) {
+  formEl.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+  formEl.querySelectorAll('.field-error').forEach(el => el.remove());
+}
+
+// ── DATE FORMATTING HELPERS (A7) ───────────────────────────────────────────
+/**
+ * Format an ISO datetime string to "DD/MM/YYYY HH:MM" using Argentine locale.
+ * Accepts both "2025-03-21T10:04:00" and "2025-03-21 10:04:00" forms.
+ */
+function _fmtDatetime(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  if (isNaN(d)) return String(isoStr).slice(0, 16).replace('T', ' ');
+  return d.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
 // ── CELL FLASH ──────────────────────────────────────────────────────────────
 /** Briefly highlight a table cell to signal a live value change. */
 function _flashCell(el) {
@@ -184,8 +241,10 @@ function initSocket() {
     if (txt) txt.textContent = 'Reconectando...';
     const banner = document.getElementById('reconnect-banner');
     if (banner) { banner.style.display = 'flex'; banner.querySelector?.('[data-reconnect-msg]')?.removeAttribute('data-reconnect-failed'); }
-    const tbDot = document.getElementById('topbar-ws-dot');
-    if (tbDot) { tbDot.className = 'topbar-ws-dot dot-orange'; tbDot.title = 'WebSocket: reconectando...'; }
+    const tbDot   = document.getElementById('topbar-ws-dot');
+    const tbLabel = document.getElementById('topbar-ws-label');
+    if (tbDot)   { tbDot.className = 'topbar-ws-dot dot-orange'; tbDot.title = 'WebSocket: reconectando...'; }
+    if (tbLabel) { tbLabel.hidden = false; tbLabel.textContent = 'Reconectando...'; }
     // If still disconnected after 30 s, update banner to show definitive failure
     clearTimeout(_reconnectFailTimer);
     _reconnectFailTimer = setTimeout(() => {
@@ -286,10 +345,21 @@ function updateStatus(connected, text) {
   _updateSidebarDots(connected ? 'green' : 'red');
 
   // Topbar WS dot — visible from all views
-  const tbDot = document.getElementById('topbar-ws-dot');
+  const tbDot   = document.getElementById('topbar-ws-dot');
+  const tbLabel = document.getElementById('topbar-ws-label');
   if (tbDot) {
     tbDot.className = `topbar-ws-dot dot-${connected ? 'green' : 'red'}`;
-    tbDot.title = `WebSocket: ${text}`;
+    tbDot.title     = `WebSocket: ${text}`;
+  }
+  // Show label only when disconnected so it doesn't clutter the topbar normally
+  if (tbLabel) {
+    if (connected) {
+      tbLabel.hidden = true;
+      tbLabel.textContent = '';
+    } else {
+      tbLabel.hidden = false;
+      tbLabel.textContent = 'Sin conexión';
+    }
   }
 }
 
@@ -1033,6 +1103,7 @@ function cerrarModal(event) {
 }
 function cerrarModalDirecto() {
   document.getElementById('modalDetalle').classList.remove('active');
+  _popModalFocus();
 }
 
 function duplicarOrden() {
@@ -1059,6 +1130,7 @@ function duplicarOrden() {
 
 // ── NUEVA ORDEN ────────────────────────────────────────────────────────────
 function abrirModalOrden() {
+  _pushModalFocus();
   document.getElementById('modalNuevaOrden').classList.add('active');
   document.getElementById('obPanel').innerHTML =
     '<div class="ob-placeholder">Ingresá una especie para ver las puntas</div>';
@@ -1075,6 +1147,7 @@ function _actualizarImporte() {
 function cerrarModalNueva(event) {
   if (event.target === document.getElementById('modalNuevaOrden')) {
     document.getElementById('modalNuevaOrden').classList.remove('active');
+    _popModalFocus();
   }
 }
 
@@ -1206,73 +1279,83 @@ async function enviarNuevaOrden() {
            || document.querySelector('#modalNuevaOrden button[type="submit"]')
            || document.querySelector('#modalNuevaOrden .modal-footer .btn-nueva-orden');
   if (btn?.disabled) return;
-  const origText = btn ? btn.textContent : null;
-  if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
 
-  const tipoPrecio = document.getElementById('f-tipo-precio').value;
-  const precioStr  = document.getElementById('f-precio').value;
-  const cantStr    = document.getElementById('f-cantidad').value;
-  const tif        = document.getElementById('f-tif').value;
-  const fechaExp   = document.getElementById('f-fecha-exp').value;
+  // ── Read form values ───────────────────────────────────────────────────────
+  const tipoPrecio  = document.getElementById('f-tipo-precio').value;
+  const precioStr   = document.getElementById('f-precio').value;
+  const cantStr     = document.getElementById('f-cantidad').value;
+  const tif         = document.getElementById('f-tif').value;
+  const fechaExp    = document.getElementById('f-fecha-exp').value;
   const cantVisible = document.getElementById('f-cant-visible').value;
   const tipoAct     = document.getElementById('f-tipo-activacion').value;
   const precioAct   = document.getElementById('f-precio-activacion').value;
   const deskVal     = document.getElementById('f-desk')?.value || '';
+  const especie     = document.getElementById('f-especie').value.toUpperCase().trim();
+  const cantidad    = parseInt(cantStr);
 
-  const especie = document.getElementById('f-especie').value.toUpperCase().trim();
-  const cantidad = parseInt(cantStr);
+  // ── Validate BEFORE disabling button (prevents ghost-disabled state) ───────
+  const form = document.getElementById('modalNuevaOrden');
+  _clearFieldErrors(form);
+  let hasError = false;
 
-  if (!especie) { showToast('Ingresá una especie.', 'warn', 'Campos requeridos'); return; }
-  if (_especiesValidas.size > 0 && !_especiesValidas.has(especie)) {
-    showToast(`La especie "${especie}" no está registrada en el sistema.`, 'warn', 'Especie inválida');
-    return;
+  if (!especie) {
+    _setFieldError('f-especie', 'Ingresá una especie.');
+    hasError = true;
+  } else if (_especiesValidas.size > 0 && !_especiesValidas.has(especie)) {
+    _setFieldError('f-especie', `"${especie}" no está registrada.`);
+    hasError = true;
   }
-  if (!cantidad || cantidad <= 0) { showToast('Ingresá una cantidad válida.', 'warn', 'Campos requeridos'); return; }
+  if (!cantidad || cantidad <= 0) {
+    _setFieldError('f-cantidad', 'Ingresá una cantidad válida.');
+    hasError = true;
+  }
   if (tipoPrecio === 'LIMITE' && (!precioStr || parseFloat(precioStr) <= 0)) {
-    showToast('Ingresá un precio límite válido.', 'warn', 'Campos requeridos');
-    return;
+    _setFieldError('f-precio', 'Ingresá un precio límite válido.');
+    hasError = true;
   }
   if (tif === 'GTD' && !fechaExp) {
-    showToast('Ingresá la fecha de expiración para orden GTD.', 'warn', 'Campos requeridos');
-    return;
+    _setFieldError('f-fecha-exp', 'Requerido para orden GTD.');
+    hasError = true;
   }
   if (tipoAct && (!precioAct || parseFloat(precioAct) <= 0)) {
-    showToast('Ingresá el precio de activación para la orden condicional.', 'warn', 'Campos requeridos');
-    return;
+    _setFieldError('f-precio-activacion', 'Ingresá el precio de activación.');
+    hasError = true;
   }
+  if (hasError) return;
+
+  // ── All valid: lock button + show spinner ──────────────────────────────────
+  const origHTML = btn ? btn.innerHTML : null;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-inline"></span> Enviando...'; }
 
   const clienteVal = document.getElementById('f-cliente')?.value || 'STD';
   _syncRazonSocial();
   const data = {
-    tipo_orden:    document.getElementById('f-tipo').value,
+    tipo_orden:     document.getElementById('f-tipo').value,
     especie,
-    moneda:        document.getElementById('f-moneda').value,
-    tipo_precio:   tipoPrecio,
+    moneda:         document.getElementById('f-moneda').value,
+    tipo_precio:    tipoPrecio,
     cantidad_total: cantidad,
-    razon_social:  document.getElementById('f-razon').value,
-    cliente:       clienteVal,
-    time_in_force: tif,
+    razon_social:   document.getElementById('f-razon').value,
+    cliente:        clienteVal,
+    time_in_force:  tif,
   };
 
   if (tipoPrecio === 'LIMITE') data.precio_limite = parseFloat(precioStr);
   if (tif === 'GTD' && fechaExp) data.fecha_exp = fechaExp;
   if (cantVisible && parseInt(cantVisible) > 0) data.cantidad_visible = parseInt(cantVisible);
   if (tipoAct) {
-    data.tipo_activacion    = tipoAct;
-    data.precio_activacion  = parseFloat(precioAct);
+    data.tipo_activacion   = tipoAct;
+    data.precio_activacion = parseFloat(precioAct);
   }
   if (deskVal) data.desk = deskVal;
 
   try {
-    const res = await apiFetch('/api/ordenes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-
+    const res    = await apiFetch('/api/ordenes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
     const result = await res.json();
+
     if (res.ok && result.success) {
       document.getElementById('modalNuevaOrden').classList.remove('active');
+      _popModalFocus();
       ['f-especie', 'f-precio', 'f-cantidad', 'f-cant-visible', 'f-precio-activacion', 'f-fecha-exp'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
@@ -1291,24 +1374,22 @@ async function enviarNuevaOrden() {
       state.currentPage = 1;
       cargarOrdenes(false);
 
-      const alertMsg = result.alertas_riesgo?.length
-        ? ` — ⚠ ${result.alertas_riesgo[0]}`
-        : '';
+      const alertMsg = result.alertas_riesgo?.length ? ` — ⚠ ${result.alertas_riesgo[0]}` : '';
       showToast('Orden creada correctamente.' + alertMsg, 'ok', 'Nueva Orden');
     } else {
       const detail = result.detail;
       if (detail && typeof detail === 'object' && detail.tipo === 'LIMITE_RIESGO') {
         showToast(detail.mensaje, 'error', 'Límite de Riesgo');
       } else {
-        showToast(detail || 'No se pudo crear la orden.', 'error');
+        showToast(_apiErrMsg(res, result, 'No se pudo crear la orden.'), 'error');
       }
     }
   } catch(e) {
     if (e.message !== '401 No autenticado — redirigiendo al login') {
-      showToast('Error de red al crear la orden.', 'error');
+      showToast('Error de red al crear la orden. Verificá tu conexión.', 'error');
     }
   } finally {
-    if (btn) { btn.disabled = false; if (origText) btn.textContent = origText; }
+    if (btn) { btn.disabled = false; if (origHTML != null) btn.innerHTML = origHTML; }
   }
 }
 
@@ -3354,11 +3435,11 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-/** Close active modal on Escape key */
+/** Close active modal on Escape key and restore focus to trigger element */
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   const overlay = document.querySelector('.modal-overlay.active');
-  if (overlay) overlay.classList.remove('active');
+  if (overlay) { overlay.classList.remove('active'); _popModalFocus(); }
 });
 
 const _especiesValidas = new Set();
@@ -3483,8 +3564,8 @@ function _confirmar(titulo, msg, onConfirm) {
   const overlay = document.createElement('div');
   overlay.id = 'confirm-overlay';
   overlay.innerHTML = `
-    <div class="confirm-box">
-      <div class="confirm-title">${esc(titulo)}</div>
+    <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="confirm-titulo">
+      <div class="confirm-title" id="confirm-titulo">${esc(titulo)}</div>
       <div class="confirm-msg">${esc(msg)}</div>
       <div class="confirm-actions">
         <button class="btn-cerrar" id="btn-confirm-cancel">Cancelar</button>
@@ -3492,10 +3573,20 @@ function _confirmar(titulo, msg, onConfirm) {
       </div>
     </div>`;
   document.body.appendChild(overlay);
+
   const cancel = () => overlay.remove();
   overlay.querySelector('#btn-confirm-cancel').onclick = cancel;
-  overlay.querySelector('#btn-confirm-ok').onclick = () => { overlay.remove(); onConfirm(); };
+  overlay.querySelector('#btn-confirm-ok').onclick = () => { clearTimeout(_confirmTimer); overlay.remove(); onConfirm(); };
   overlay.onclick = (e) => { if (e.target === overlay) cancel(); };
+
+  // ESC key closes the dialog
+  const onKey = (e) => { if (e.key === 'Escape') { cancel(); document.removeEventListener('keydown', onKey); } };
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('remove', () => { clearTimeout(_confirmTimer); document.removeEventListener('keydown', onKey); }, { once: true });
+
+  // Auto-dismiss after 10 minutes to prevent stale confirm dialogs
+  let _confirmTimer = setTimeout(() => cancel(), 10 * 60 * 1000);
+
   // Focus confirm button for keyboard accessibility
   overlay.querySelector('#btn-confirm-ok').focus();
 }
@@ -3634,7 +3725,7 @@ async function cargarFirma(page = 1) {
         const sign  = e.sentido === 'CREDIT' ? '+' : '−';
         const monto = parseFloat(e.monto || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 });
         const bal   = parseFloat(e.balance_post || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 });
-        const fecha = e.created_at ? e.created_at.slice(0, 16).replace('T', ' ') : '—';
+        const fecha = _fmtDatetime(e.created_at);
         return `<tr>
           <td style="font-size:10px">${fecha}</td>
           <td><span class="badge">${e.tipo}</span></td>
@@ -3751,7 +3842,7 @@ async function verMovimientosOp(opId, nombre, page = 1) {
         const sign  = e.sentido === 'CREDIT' ? '+' : '−';
         const monto = parseFloat(e.monto || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 });
         const bal   = parseFloat(e.balance_post || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 });
-        const fecha = e.created_at ? e.created_at.slice(0, 16).replace('T', ' ') : '—';
+        const fecha = _fmtDatetime(e.created_at);
         return `<tr>
           <td style="font-size:10px">${fecha}</td>
           <td><span class="badge">${e.tipo}</span></td>
@@ -3815,7 +3906,7 @@ async function cargarAlertas() {
             <span class="toggle-track"></span>
           </label>
         </td>
-        <td style="font-size:10px;color:var(--text3)">${a.ultima_vez ? new Date(a.ultima_vez).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'}</td>
+        <td style="font-size:10px;color:var(--text3)">${_fmtDatetime(a.ultima_vez)}</td>
         <td>
           <button class="btn-danger" style="font-size:10px;padding:2px 8px" data-action="eliminar-alerta" data-id="${a.id}" aria-label="Eliminar alerta">✕</button>
         </td>
@@ -4125,6 +4216,7 @@ async function cargarUsuarios() {
 }
 
 function abrirModalUsuario(usuario = null) {
+  _pushModalFocus();
   if (typeof usuario === 'number' || (typeof usuario === 'string' && usuario !== '')) {
     usuario = _usuarioDataMap[+usuario] || null;
   }
@@ -4256,6 +4348,7 @@ async function cargarClientesAdmin() {
 }
 
 function abrirModalCliente(cliente = null) {
+  _pushModalFocus();
   if (typeof cliente === 'string' && cliente !== '') {
     cliente = _clienteDataMap[cliente] || null;
   }
@@ -5091,9 +5184,7 @@ async function cargarMovimientosBot(page) {
       const montoSign = isCredit ? '+' : '-';
       const montoClr  = isCredit ? 'var(--green)' : 'var(--red)';
       const tipoClr   = _tipoColor[e.tipo] || 'var(--text2)';
-      const fecha     = e.created_at
-        ? e.created_at.slice(0, 16)   // "21/03/2026 10:04"
-        : '—';
+      const fecha = _fmtDatetime(e.created_at);
       return `<tr>
         <td style="font-family:'IBM Plex Mono',monospace;font-size:11px;white-space:nowrap">${esc(fecha)}</td>
         <td><span style="font-size:10px;font-weight:600;color:${tipoClr}">${esc(e.tipo)}</span></td>
@@ -6004,7 +6095,7 @@ async function cargarLiquidaciones(page = 1) {
     document.getElementById('liq-pag-info').textContent = `Página ${_liqPage} de ${totalPages}`;
     document.getElementById('liq-prev').disabled = _liqPage <= 1;
     document.getElementById('liq-next').disabled = _liqPage >= totalPages;
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Sin liquidaciones pendientes.</td></tr>'; return; }
+    if (!rows.length) { tbody.innerHTML = _emptyStateHtml([], '', 8); return; }
     tbody.innerHTML = rows.map(r => `
       <tr>
         <td style="font-family:'IBM Plex Mono',monospace;font-size:11px">${esc(r.id||r.fill_id||'—')}</td>
@@ -6240,7 +6331,7 @@ async function cargarProyeccion() {
     const detalleEl = document.getElementById('cajaOrdenesDetalle');
     if (detalleEl) {
       if (!d.ordenes_pendientes.length) {
-        detalleEl.innerHTML = '<span style="font-size:11px;color:var(--text3)">Sin ordenes de compra pendientes.</span>';
+        detalleEl.innerHTML = '<span class="text-muted" style="font-size:11px">Sin ordenes de compra pendientes.</span>';
       } else {
         detalleEl.innerHTML = `
           <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">Ordenes que componen el comprometido:</div>
