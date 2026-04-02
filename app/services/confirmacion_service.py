@@ -11,7 +11,7 @@ Partial-fill recalculation:
     based on the combined state of all its fills.
 """
 
-from datetime import datetime, timezone, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -26,7 +26,7 @@ from app.models.account_entry import AccountEntry
 from app.services import audit_service
 from app.core.estados import (
     COD_EJECUTADA, COD_PARC_EJECUTADA, COD_PENDIENTE,
-    COD_RECHAZADA,
+    COD_RECHAZADA, COD_CONCERTADA, COD_PARC_CONCERTADA,
 )
 from app.models.bot_instancia import TIPOS_COMPRA, TIPOS_VENTA
 
@@ -170,10 +170,10 @@ def recalcular_estado_orden(db: Session, orden: Orden) -> None:
         # Keep in concertación state
         if qty_activa >= orden.cantidad_total:
             orden.instancia = "Concertada"
-            orden.instancia_codigo = 7
+            orden.instancia_codigo = COD_CONCERTADA
         else:
             orden.instancia = "Parcialmente Concertada"
-            orden.instancia_codigo = 6
+            orden.instancia_codigo = COD_PARC_CONCERTADA
         orden.estado_color = "orange"
     elif qty_activa >= orden.cantidad_total:
         orden.instancia = "Ejecutada"

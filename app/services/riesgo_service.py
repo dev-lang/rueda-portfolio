@@ -18,10 +18,11 @@ from decimal import Decimal
 from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 
 from app.models.limite_riesgo import LimiteRiesgo
 from app.models.ejecucion import Ejecucion
+from app.models.confirmacion import Confirmacion
 from app.models.bot_instancia import TIPOS_COMPRA
 from app.models.orden import Orden
 from app.models.account import Account
@@ -132,11 +133,13 @@ def verificar_limites_orden(
         volumen_hoy = _to_decimal(
             db.execute(
                 select(func.sum(Ejecucion.cantidad * Ejecucion.precio))
+                .outerjoin(Confirmacion, Confirmacion.ejecucion_id == Ejecucion.id)
                 .join(Orden, Ejecucion.orden_id == Orden.id)
                 .where(
                     Orden.especie == especie,
                     Orden.moneda == moneda,
                     Ejecucion.fecha == hoy,
+                    or_(Confirmacion.id == None, Confirmacion.estado != "RECHAZADA"),
                     *([Orden.cliente == _get_cliente_codigo(db, cliente_id)] if cliente_id else []),
                 )
             ).scalar()

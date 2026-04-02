@@ -10,9 +10,15 @@ const LIQ_PER_PAGE         = 50;    // rows per page for liquidaciones
  *  type: 'ok' | 'error' | 'warn'  (default 'ok')
  *  Replaces native alert() for non-blocking user feedback.
  */
+const TOAST_MAX = 4;  // max simultaneous toasts before evicting the oldest
+
 function showToast(msg, type = 'ok', title = '') {
   const container = document.getElementById('toast-container');
   if (!container) { alert(msg); return; }
+
+  // Evict oldest toast if at the limit
+  const existing = container.querySelectorAll('.toast');
+  if (existing.length >= TOAST_MAX) existing[0].remove();
 
   const icons = { ok: '✓', error: '✗', warn: '⚠' };
   const titles = { ok: title || 'Listo', error: title || 'Error', warn: title || 'Atención' };
@@ -170,17 +176,30 @@ function initSocket() {
     updateStatus(false, 'Desconectado del servidor');
   });
 
+  let _reconnectFailTimer = null;
+
   state.socket.on('reconnect_attempt', () => {
     _updateSidebarDots('orange');
     const txt = document.getElementById('status-text');
     if (txt) txt.textContent = 'Reconectando...';
     const banner = document.getElementById('reconnect-banner');
-    if (banner) banner.style.display = 'flex';
+    if (banner) { banner.style.display = 'flex'; banner.querySelector?.('[data-reconnect-msg]')?.removeAttribute('data-reconnect-failed'); }
     const tbDot = document.getElementById('topbar-ws-dot');
     if (tbDot) { tbDot.className = 'topbar-ws-dot dot-orange'; tbDot.title = 'WebSocket: reconectando...'; }
+    // If still disconnected after 30 s, update banner to show definitive failure
+    clearTimeout(_reconnectFailTimer);
+    _reconnectFailTimer = setTimeout(() => {
+      const b = document.getElementById('reconnect-banner');
+      const msg = b?.querySelector('[data-reconnect-msg]') || b;
+      if (msg && b?.style.display !== 'none') {
+        const span = b.querySelector('span') || b;
+        if (span) span.textContent = 'Sin conexión con el servidor. Recargá la página para reconectar.';
+      }
+    }, 30_000);
   });
 
   state.socket.on('reconnect', () => {
+    clearTimeout(_reconnectFailTimer);
     const banner = document.getElementById('reconnect-banner');
     if (banner) banner.style.display = 'none';
   });
@@ -1087,6 +1106,7 @@ document.getElementById('f-especie').addEventListener('input', function () {
       '<div class="ob-placeholder">Especie no registrada</div>';
     return;
   }
+  document.getElementById('obPanel').innerHTML = '<div class="ob-loading">Cargando puntas...</div>';
   _obTimer = setTimeout(() => cargarOrderbook(esp), 600);
 });
 
@@ -1182,6 +1202,13 @@ function setPrecioDesdeOB(precio) {
 }
 
 async function enviarNuevaOrden() {
+  const btn = document.querySelector('#modalNuevaOrden .btn-nueva-orden[data-action="enviar-nueva-orden"]')
+           || document.querySelector('#modalNuevaOrden button[type="submit"]')
+           || document.querySelector('#modalNuevaOrden .modal-footer .btn-nueva-orden');
+  if (btn?.disabled) return;
+  const origText = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+
   const tipoPrecio = document.getElementById('f-tipo-precio').value;
   const precioStr  = document.getElementById('f-precio').value;
   const cantStr    = document.getElementById('f-cantidad').value;
@@ -1236,41 +1263,52 @@ async function enviarNuevaOrden() {
   }
   if (deskVal) data.desk = deskVal;
 
-  const res = await apiFetch('/api/ordenes', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-
-  const result = await res.json();
-  if (res.ok && result.success) {
-    document.getElementById('modalNuevaOrden').classList.remove('active');
-    ['f-especie', 'f-precio', 'f-cantidad', 'f-cant-visible', 'f-precio-activacion', 'f-fecha-exp'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.value = '';
+  try {
+    const res = await apiFetch('/api/ordenes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
     });
-    document.getElementById('f-tipo-precio').value = 'LIMITE';
-    document.getElementById('f-tif').value = 'DAY';
-    document.getElementById('f-tipo-activacion').value = '';
-    const fDesk = document.getElementById('f-desk'); if (fDesk) fDesk.value = '';
-    togglePrecioLimite();
-    toggleFechaExp();
-    togglePrecioActivacion();
-    _actualizarImporte();
-    state.currentPage = 1;
-    cargarOrdenes(false);
 
-    const alertMsg = result.alertas_riesgo?.length
-      ? ` — ⚠ ${result.alertas_riesgo[0]}`
-      : '';
-    showToast('Orden creada correctamente.' + alertMsg, 'ok', 'Nueva Orden');
-  } else {
-    const detail = result.detail;
-    if (detail && typeof detail === 'object' && detail.tipo === 'LIMITE_RIESGO') {
-      showToast(detail.mensaje, 'error', 'Límite de Riesgo');
+    const result = await res.json();
+    if (res.ok && result.success) {
+      document.getElementById('modalNuevaOrden').classList.remove('active');
+      ['f-especie', 'f-precio', 'f-cantidad', 'f-cant-visible', 'f-precio-activacion', 'f-fecha-exp'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      document.getElementById('f-tipo').value = 'LIMC';
+      document.getElementById('f-moneda').value = 'ARP';
+      document.getElementById('f-tipo-precio').value = 'LIMITE';
+      document.getElementById('f-tif').value = 'DAY';
+      document.getElementById('f-tipo-activacion').value = '';
+      const fDesk = document.getElementById('f-desk'); if (fDesk) fDesk.value = '';
+      const fCliente = document.getElementById('f-cliente'); if (fCliente && !fCliente.disabled) fCliente.value = fCliente.options[0]?.value || '';
+      togglePrecioLimite();
+      toggleFechaExp();
+      togglePrecioActivacion();
+      _actualizarImporte();
+      state.currentPage = 1;
+      cargarOrdenes(false);
+
+      const alertMsg = result.alertas_riesgo?.length
+        ? ` — ⚠ ${result.alertas_riesgo[0]}`
+        : '';
+      showToast('Orden creada correctamente.' + alertMsg, 'ok', 'Nueva Orden');
     } else {
-      showToast(detail || 'No se pudo crear la orden.', 'error');
+      const detail = result.detail;
+      if (detail && typeof detail === 'object' && detail.tipo === 'LIMITE_RIESGO') {
+        showToast(detail.mensaje, 'error', 'Límite de Riesgo');
+      } else {
+        showToast(detail || 'No se pudo crear la orden.', 'error');
+      }
     }
+  } catch(e) {
+    if (e.message !== '401 No autenticado — redirigiendo al login') {
+      showToast('Error de red al crear la orden.', 'error');
+    }
+  } finally {
+    if (btn) { btn.disabled = false; if (origText) btn.textContent = origText; }
   }
 }
 
@@ -1365,11 +1403,27 @@ function _applySortDOM(table, col, dir) {
   rows.forEach(r => tbody.appendChild(r));
 }
 
-/** Re-apply active sort after a tbody re-render. */
+/** Re-apply active sort after a tbody re-render — restores header indicator too. */
 function _reapplySort(table) {
   if (!table || !table._sortId) return;
   const s = _sortState[table._sortId];
   if (!s) return;
+  // Restore visual indicator on the active header
+  const headerRow = table.querySelector('thead tr');
+  if (headerRow) {
+    Array.from(headerRow.cells).forEach((h, i) => {
+      const ind = h.querySelector('.sort-ind');
+      if (i === s.col) {
+        if (ind) ind.textContent = s.dir > 0 ? ' ▲' : ' ▼';
+        h.setAttribute('data-sort-active', s.dir > 0 ? 'asc' : 'desc');
+        h.setAttribute('aria-sort', s.dir > 0 ? 'ascending' : 'descending');
+      } else {
+        if (ind) ind.textContent = '';
+        h.removeAttribute('data-sort-active');
+        h.setAttribute('aria-sort', 'none');
+      }
+    });
+  }
   _applySortDOM(table, s.col, s.dir);
 }
 
@@ -1393,11 +1447,15 @@ function initTableSort() {
 }
 
 // ── BÚSQUEDA GLOBAL ────────────────────────────────────────────────────────
+let _searchTimer = null;
 document.getElementById('globalSearch').addEventListener('input', function() {
+  clearTimeout(_searchTimer);
   const q = this.value.toLowerCase();
-  document.querySelectorAll('#ordersBody tr[data-id]').forEach(row => {
-    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
-  });
+  _searchTimer = setTimeout(() => {
+    document.querySelectorAll('#ordersBody tr[data-id]').forEach(row => {
+      row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  }, 180);
 });
 
 // ── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────────
@@ -2957,13 +3015,20 @@ function toggleTheme() {
 }
 
 // ── SIDEBAR DRAWER TOGGLE ───────────────────────────────────────────────────
+function _updateHamburgerAria() {
+  const btn = document.getElementById('btnHamburger');
+  if (btn) btn.setAttribute('aria-expanded', document.body.classList.contains('sidebar-open') ? 'true' : 'false');
+}
+
 function toggleSidebar() {
   document.body.classList.toggle('sidebar-open');
+  _updateHamburgerAria();
 }
 
 function _closeSidebarIfMobile() {
   if (window.innerWidth <= 1024) {
     document.body.classList.remove('sidebar-open');
+    _updateHamburgerAria();
   }
 }
 
@@ -3615,11 +3680,11 @@ async function cargarPosicionesFirma() {
     tbody.innerHTML = data.posiciones.map(p => `<tr>
       <td><strong>${p.especie}</strong></td>
       <td>${p.mercado || '—'}</td>
-      <td style="text-align:right">${(p.cantidad_comprada||0).toLocaleString()}</td>
-      <td style="text-align:right">${(p.cantidad_vendida||0).toLocaleString()}</td>
-      <td style="text-align:right;font-weight:700;color:${(p.cantidad_neta||0)>=0?'var(--buy,#4caf50)':'var(--sell,#e05c5c)'}">${(p.cantidad_neta||0).toLocaleString()}</td>
+      <td style="text-align:right">${(p.cantidad_comprada||0).toLocaleString('es-AR')}</td>
+      <td style="text-align:right">${(p.cantidad_vendida||0).toLocaleString('es-AR')}</td>
+      <td style="text-align:right;font-weight:700;color:${(p.cantidad_neta||0)>=0?'var(--buy,#4caf50)':'var(--sell,#e05c5c)'}">${(p.cantidad_neta||0).toLocaleString('es-AR')}</td>
       <td style="text-align:right">${fmt(p.costo_promedio_compra)}</td>
-      <td style="text-align:right">${(p.cantidad_pendiente_liquidacion||0).toLocaleString()}</td>
+      <td style="text-align:right">${(p.cantidad_pendiente_liquidacion||0).toLocaleString('es-AR')}</td>
     </tr>`).join('');
   } catch(e) {
     tbody.innerHTML = `<tr><td colspan="7" class="text-muted">Error al cargar: ${e.message}</td></tr>`;
@@ -3746,11 +3811,11 @@ async function cargarAlertas() {
         <td>${a.especie ? `<span class="especie-tag">${esc(a.especie)}</span>` : '<span style="color:var(--text3)">Todas</span>'}</td>
         <td>
           <label class="toggle-switch" title="${a.activo ? 'Activa — click para pausar' : 'Pausada — click para activar'}">
-            <input type="checkbox" ${a.activo ? 'checked' : ''} onchange="toggleAlerta(${a.id})">
+            <input type="checkbox" ${a.activo ? 'checked' : ''} onchange="toggleAlerta(${a.id}, this)">
             <span class="toggle-track"></span>
           </label>
         </td>
-        <td style="font-size:10px;color:var(--text3)">${a.ultima_vez ? a.ultima_vez.replace('T', ' ').slice(0, 16) : '—'}</td>
+        <td style="font-size:10px;color:var(--text3)">${a.ultima_vez ? new Date(a.ultima_vez).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'}</td>
         <td>
           <button class="btn-danger" style="font-size:10px;padding:2px 8px" data-action="eliminar-alerta" data-id="${a.id}" aria-label="Eliminar alerta">✕</button>
         </td>
@@ -3786,15 +3851,31 @@ async function guardarAlerta() {
   } catch { if (msg) { msg.textContent = 'Error de red.'; msg.style.color = 'var(--red)'; } }
 }
 
-async function toggleAlerta(id) {
-  await apiFetch(`/api/alertas/${id}/toggle`, { method: 'PATCH' });
-  cargarAlertas();
+async function toggleAlerta(id, checkbox) {
+  const estadoPrevio = checkbox ? !checkbox.checked : null;
+  try {
+    await apiFetch(`/api/alertas/${id}/toggle`, { method: 'PATCH' });
+    cargarAlertas();
+  } catch(e) {
+    if (checkbox && estadoPrevio !== null) checkbox.checked = estadoPrevio;
+    showToast('No se pudo cambiar el estado de la alerta.', 'error');
+  }
 }
 
 async function eliminarAlerta(id) {
-  if (!confirm('¿Eliminar esta alerta?')) return;
-  await apiFetch(`/api/alertas/${id}`, { method: 'DELETE' });
-  cargarAlertas();
+  _confirmar(
+    'Eliminar Alerta',
+    '¿Eliminar esta alerta? Esta acción no se puede deshacer.',
+    async () => {
+      try {
+        await apiFetch(`/api/alertas/${id}`, { method: 'DELETE' });
+        showToast('Alerta eliminada.', 'ok');
+        cargarAlertas();
+      } catch(e) {
+        showToast('No se pudo eliminar la alerta.', 'error');
+      }
+    }
+  );
 }
 
 let _auditPage = 1;
@@ -4642,13 +4723,19 @@ async function toggleBotEnabled(botId, enabled) {
 }
 
 async function eliminarBot(botId, nombre) {
-  if (!confirm(`¿Eliminar la instancia "${nombre}"? Esta acción no se puede deshacer.`)) return;
-  try {
-    await apiFetch(`/api/admin/bots/${botId}`, { method: 'DELETE' });
-    await cargarBots();
-  } catch(e) {
-    showToast('Error al eliminar: ' + e.message, 'error');
-  }
+  _confirmar(
+    'Eliminar instancia',
+    `¿Eliminar la instancia "${nombre}"? Esta acción no se puede deshacer.`,
+    async () => {
+      try {
+        await apiFetch(`/api/admin/bots/${botId}`, { method: 'DELETE' });
+        showToast(`Instancia "${nombre}" eliminada.`, 'ok');
+        await cargarBots();
+      } catch(e) {
+        showToast('Error al eliminar: ' + e.message, 'error');
+      }
+    }
+  );
 }
 
 
@@ -4743,8 +4830,17 @@ async function guardarMercadoMatching() {
 
 async function resetDemoData() {
   const resEl = document.getElementById('demo-reset-result');
-  if (!confirm('¿Reiniciar datos operativos? Órdenes, ejecuciones, posiciones y movimientos de cuenta serán borrados permanentemente.')) return;
-  if (!confirm('Segunda confirmación: esta acción NO se puede deshacer. ¿Continuar?')) return;
+  _confirmar(
+    '⚠ Reiniciar datos operativos',
+    'Se borrarán permanentemente: órdenes, ejecuciones, posiciones y movimientos de cuenta. Esta acción NO se puede deshacer.',
+    async () => {
+      resEl.textContent = 'Eliminando...';
+      _resetDemoDataExec(resEl);
+    }
+  );
+}
+
+async function _resetDemoDataExec(resEl) {
   resEl.textContent = 'Eliminando...';
   resEl.style.color = 'var(--text3)';
   try {
@@ -5094,28 +5190,38 @@ async function inicializarCuentaBot() {
 
 async function ejecutarReconciliarBot() {
   if (!_cbAccountId) return;
-  if (!confirm('¿Recalcular el balance sumando todos los movimientos del ledger? Esta operación es de solo lectura pero actualiza el balance_cache.')) return;
-  const resEl = document.getElementById('cb-ajuste-result');
-  resEl.style.color = 'var(--text2)';
-  resEl.textContent = 'Reconciliando...';
+  _confirmar(
+    'Reconciliar balance',
+    'Se recalculará el balance sumando todos los movimientos del ledger. Operación de solo lectura — actualiza balance_cache.',
+    async () => {
+      const resEl = document.getElementById('cb-ajuste-result');
+      await _reconciliarBotExec(resEl);
+    }
+  );
+}
+
+async function _reconciliarBotExec(resEl) {
+  const el = resEl || document.getElementById('cb-ajuste-result');
+  el.style.color = 'var(--text2)';
+  el.textContent = 'Reconciliando...';
   try {
     const res  = await apiFetch(`/api/cuentas/${_cbAccountId}/reconciliar`, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) {
-      resEl.style.color = 'var(--red)';
-      resEl.textContent = data.detail || 'Error al reconciliar.';
+      el.style.color = 'var(--red)';
+      el.textContent = data.detail || 'Error al reconciliar.';
       return;
     }
     const drift = data.drift || 0;
-    resEl.style.color = Math.abs(drift) > 0.01 ? 'var(--red)' : 'var(--green)';
-    resEl.textContent =
+    el.style.color = Math.abs(drift) > 0.01 ? 'var(--red)' : 'var(--green)';
+    el.textContent =
       `Reconciliado. Balance nuevo: $${_fmtARS(data.balance_nuevo)} ` +
       `(antes: $${_fmtARS(data.balance_antes)}, drift: ${drift >= 0 ? '+' : ''}$${_fmtARS(drift)})`;
     _cbMovCargados = false;
     await cargarRendimientoBot(_cbBotId);
   } catch(e) {
-    resEl.style.color = 'var(--red)';
-    resEl.textContent = e.message;
+    el.style.color = 'var(--red)';
+    el.textContent = e.message;
   }
 }
 
@@ -5497,8 +5603,17 @@ async function cargarResumenPnl(fecha) {
 async function abrirCierreDia() {
   const fecha = document.getElementById('pnlFechaHasta')?.value || new Date().toISOString().slice(0,10);
   const resEl = document.getElementById('pnlCierreDiaResult');
-  if (!confirm(`¿Ejecutar cierre de día para ${fecha}? Es idempotente.`)) return;
-  resEl.style.color='var(--text2)'; resEl.textContent='Procesando...';
+  _confirmar(
+    'Cierre de día',
+    `¿Ejecutar cierre de día para ${fecha}? La operación es idempotente.`,
+    async () => {
+      resEl.style.color='var(--text2)'; resEl.textContent='Procesando...';
+      await _cierreDiaExec(fecha, resEl);
+    }
+  );
+}
+
+async function _cierreDiaExec(fecha, resEl) {
   try {
     const res  = await apiFetch(`/api/pnl/cerrar-dia?fecha=${fecha}`, { method: 'POST' });
     const data = await res.json();
@@ -5909,8 +6024,17 @@ async function cargarLiquidaciones(page = 1) {
 
 async function procesarLiquidaciones() {
   const resEl = document.getElementById('liquidResult');
-  if (!confirm('¿Procesar el batch de liquidaciones EOD?')) return;
-  resEl.style.color='var(--text2)'; resEl.textContent='Procesando...';
+  _confirmar(
+    'Procesar liquidaciones EOD',
+    '¿Procesar el batch de liquidaciones de fin de día? Se marcarán como liquidadas todas las ejecuciones con fecha de liquidación vencida.',
+    async () => {
+      resEl.style.color='var(--text2)'; resEl.textContent='Procesando...';
+      await _procesarLiquidacionesExec(resEl);
+    }
+  );
+}
+
+async function _procesarLiquidacionesExec(resEl) {
   try {
     const res  = await apiFetch('/api/liquidaciones/procesar', { method: 'POST' });
     const data = await res.json();

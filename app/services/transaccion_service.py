@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from datetime import date
 
 from app.models.orden import Orden
@@ -132,12 +132,17 @@ def ejecutar_orden(
     db.add(ejecucion)
     db.flush()  # ensure this fill is included in the aggregate below
 
-    # ── 7. Recalculate from source of truth ───────────────────────────────────
+    # ── 7. Recalculate from source of truth (exclude rejected fills) ──────────
     result = db.execute(
         select(
             func.sum(Ejecucion.cantidad),
             func.sum(Ejecucion.cantidad * Ejecucion.precio),
-        ).where(Ejecucion.orden_id == orden_id)
+        )
+        .outerjoin(Confirmacion, Confirmacion.ejecucion_id == Ejecucion.id)
+        .where(
+            Ejecucion.orden_id == orden_id,
+            or_(Confirmacion.id == None, Confirmacion.estado != "RECHAZADA"),
+        )
     ).one()
 
     total_cantidad = result[0] or 0

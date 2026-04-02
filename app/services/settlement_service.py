@@ -16,10 +16,11 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from app.models.settlement_rule import SettlementRule
 from app.models.ejecucion import Ejecucion
+from app.models.confirmacion import Confirmacion
 from app.models.account_entry import AccountEntry
 from app.models.account import Account
 from app.models.posicion import Posicion
@@ -152,10 +153,13 @@ def liquidar_pendientes(db: Session) -> int:
     count = 0
 
     pendientes: list[Ejecucion] = db.execute(
-        select(Ejecucion).where(
+        select(Ejecucion)
+        .outerjoin(Confirmacion, Confirmacion.ejecucion_id == Ejecucion.id)
+        .where(
             Ejecucion.liquidada == False,
             Ejecucion.fecha_liquidacion != None,
             Ejecucion.fecha_liquidacion <= hoy,
+            or_(Confirmacion.id == None, Confirmacion.estado != "RECHAZADA"),
         )
     ).scalars().all()
 

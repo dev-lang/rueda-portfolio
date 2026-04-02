@@ -74,11 +74,15 @@ def actualizar_posicion(
 
     posicion.cantidad_neta = (posicion.cantidad_comprada or 0) - (posicion.cantidad_vendida or 0)
 
-    # When position goes flat, reset cost basis so the next leg starts fresh.
-    # Without this, a rebuy after selling everything inherits stale weighted average.
+    # When position goes flat, reset cost basis AND cumulative counters so the
+    # next leg starts fresh.  Resetting only the cost but not the quantities
+    # corrupts the weighted-average formula on the next fill (the stale cumulative
+    # qty acts as a phantom denominator, diluting the new price).
     if posicion.cantidad_neta == 0:
         posicion.costo_promedio_compra = 0.0
         posicion.costo_promedio_venta = 0.0
+        posicion.cantidad_comprada = 0
+        posicion.cantidad_vendida = 0
 
     # Track unsettled quantity so cantidad_disponible stays accurate
     if not bool(ejecucion.liquidada):
