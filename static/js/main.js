@@ -3478,11 +3478,12 @@ const ACTIONS = {
   'snapshot-cierre':    () => snapshotCierre?.(),
 
   // ── Seguidos (Watchlist) ──────────────────────────────────────────────────
-  'refrescar-seguidos':   () => refrescarSeguidos?.(),
-  'abrir-modal-seguido':  () => abrirModalSeguido(),
-  'cerrar-modal-seguido': () => cerrarModalSeguido(),
-  'confirmar-seguido':    () => confirmarAgregarSeguido(),
-  'eliminar-seguido':     (el) => eliminarSeguido(el),
+  'refrescar-seguidos':         () => refrescarSeguidos?.(),
+  'abrir-modal-seguido':        () => abrirModalSeguido(),
+  'cerrar-modal-seguido':       () => cerrarModalSeguido(),
+  'confirmar-seguido':          () => confirmarAgregarSeguido(),
+  'eliminar-seguido':           (el) => eliminarSeguido(el),
+  'refrescar-preview-seguido':  () => _refrescarPreviewSeguidoManual(),
 
   // ── Admin — Operadores ────────────────────────────────────────────────────
   'abrir-modal-cuenta-dep': (el) => abrirModalCuenta('operador', 'CREDIT', Number(el.dataset.id), el.dataset.nombre),
@@ -6848,11 +6849,39 @@ async function cargarSeguidos() {
 
 // ── Modal Agregar Seguido ─────────────────────────────────────────────────────
 
+let _segPreviewInterval = null;
+const _SEG_PREVIEW_INTERVAL_MS = 15_000;
+
+function _getEspecieModal() {
+  return (document.getElementById('seguirInputModal')?.value || '').trim().toUpperCase();
+}
+
+function _refrescarPreviewSeguidoManual() {
+  const esp = _getEspecieModal();
+  if (esp.length >= 2) _cargarPreviewSeguido(esp);
+}
+
+function _startPreviewPolling() {
+  _stopPreviewPolling();
+  _segPreviewInterval = setInterval(() => {
+    const esp = _getEspecieModal();
+    if (esp.length >= 2) _cargarPreviewSeguido(esp);
+  }, _SEG_PREVIEW_INTERVAL_MS);
+}
+
+function _stopPreviewPolling() {
+  if (_segPreviewInterval !== null) {
+    clearInterval(_segPreviewInterval);
+    _segPreviewInterval = null;
+  }
+}
+
 async function abrirModalSeguido() {
   const modal = document.getElementById('modalAgregarSeguido');
   if (!modal) return;
 
   // Reset state
+  _stopPreviewPolling();
   _resetPreviewSeguido();
   const input = document.getElementById('seguirInputModal');
   if (input) { input.value = ''; input.focus(); }
@@ -6869,9 +6898,11 @@ async function abrirModalSeguido() {
   } catch { /* non-critical */ }
 
   modal.classList.add('active');
+  _startPreviewPolling();
 }
 
 function cerrarModalSeguido() {
+  _stopPreviewPolling();
   document.getElementById('modalAgregarSeguido')?.classList.remove('active');
 }
 

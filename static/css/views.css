@@ -1105,7 +1105,7 @@ html.theme-sap .bt-label { font-family: Arial, Helvetica, sans-serif; background
 
 .seguido-preview-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
@@ -1125,6 +1125,27 @@ html.theme-sap .bt-label { font-family: Arial, Helvetica, sans-serif; background
 .seguido-preview-var.pos { color: var(--green); }
 .seguido-preview-var.neg { color: var(--red); }
 .seguido-preview-var.neu { color: var(--text3); }
+
+.btn-refresh-preview {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text3);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.btn-refresh-preview:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 
 .seguido-preview-precio {
   font-size: 28px;
