@@ -3484,6 +3484,11 @@ const ACTIONS = {
   'confirmar-seguido':          () => confirmarAgregarSeguido(),
   'eliminar-seguido':           (el) => eliminarSeguido(el),
   'refrescar-preview-seguido':  () => _refrescarPreviewSeguidoManual(),
+  // context menu
+  'abrir-ctx-seguido':          (el, e) => abrirCtxSeguido(e, el.dataset.especie, el.dataset.id),
+  'ctx-seg-puntas':             () => ctxSegVerPuntas(),
+  'ctx-seg-orden':              () => ctxSegNuevaOrden(),
+  'ctx-seg-remover':            () => ctxSegRemover(),
 
   // ── Admin — Operadores ────────────────────────────────────────────────────
   'abrir-modal-cuenta-dep': (el) => abrirModalCuenta('operador', 'CREDIT', Number(el.dataset.id), el.dataset.nombre),
@@ -6821,7 +6826,7 @@ async function cargarSeguidos() {
       const minMax = (s.precio_minimo_dia && s.precio_maximo_dia)
         ? `${_fmtP(s.precio_minimo_dia)} - ${_fmtP(s.precio_maximo_dia)}` : '—';
       return `<tr data-id="${s.id}">
-        <td>${esc(s.especie)}</td>
+        <td><span class="especie-link" data-action="abrir-ctx-seguido" data-especie="${esc(s.especie)}" data-id="${s.id}">${esc(s.especie)}</span></td>
         <td class="precio-cell">${_fmtP(s.precio_actual)}</td>
         <td class="precio-cell ${_varCls(s.variacion_diaria)}">${_fmtV(s.variacion_diaria)}%</td>
         <td class="precio-cell">${_fmtP(s.precio_cierre)}</td>
@@ -6845,6 +6850,114 @@ async function cargarSeguidos() {
     const emptyDiv = document.getElementById('seguidos-empty');
     if (emptyDiv) emptyDiv.style.display = 'none';
   }
+}
+
+// ── Context menu Seguidos ─────────────────────────────────────────────────────
+
+let _ctxEspecie = null;
+let _ctxSegId   = null;
+
+function abrirCtxSeguido(e, especie, id) {
+  e.preventDefault();
+  e.stopPropagation();
+  _ctxEspecie = especie;
+  _ctxSegId   = id;
+
+  const menu = document.getElementById('ctxMenuSeguido');
+  if (!menu) return;
+
+  // Position near cursor, adjust if near edge
+  const pad  = 6;
+  const mw   = 170;
+  const mh   = 120;
+  let x = e.clientX;
+  let y = e.clientY;
+  if (x + mw > window.innerWidth  - pad) x = window.innerWidth  - mw - pad;
+  if (y + mh > window.innerHeight - pad) y = window.innerHeight - mh - pad;
+
+  menu.style.left    = x + 'px';
+  menu.style.top     = y + 'px';
+  menu.style.display = 'block';
+  menu.focus();
+}
+
+function cerrarCtxSeguido() {
+  const menu = document.getElementById('ctxMenuSeguido');
+  if (menu) menu.style.display = 'none';
+  _ctxEspecie = null;
+  _ctxSegId   = null;
+}
+
+function ctxSegVerPuntas() {
+  const esp = _ctxEspecie;
+  cerrarCtxSeguido();
+  if (esp) abrirModalDetalleSeguido(esp);
+}
+
+function ctxSegNuevaOrden() {
+  const esp = _ctxEspecie;
+  cerrarCtxSeguido();
+  if (esp) abrirModalOrdenConEspecie(esp);
+}
+
+function ctxSegRemover() {
+  const id      = _ctxSegId;
+  const especie = _ctxEspecie;
+  cerrarCtxSeguido();
+  if (id == null) return;
+  eliminarSeguido({ dataset: { id: String(id) } }, especie);
+}
+
+// Close context menu on outside click or Escape
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('ctxMenuSeguido');
+  if (menu && menu.style.display !== 'none' && !menu.contains(e.target)) {
+    cerrarCtxSeguido();
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const menu = document.getElementById('ctxMenuSeguido');
+    if (menu && menu.style.display !== 'none') { cerrarCtxSeguido(); }
+  }
+});
+
+// ── Modal detalle (ver puntas, modo solo lectura) ─────────────────────────────
+
+function abrirModalDetalleSeguido(especie) {
+  const modal    = document.getElementById('modalAgregarSeguido');
+  const inner    = modal?.querySelector('.modal-seguido');
+  const titulo   = document.getElementById('modalSeguidoTitulo');
+  const subtitulo = document.getElementById('modalSeguidoSubtitulo');
+  if (!modal || !inner) return;
+
+  inner.classList.add('modo-detalle');
+  if (titulo)    titulo.textContent    = especie;
+  if (subtitulo) subtitulo.textContent = 'Precio y puntas en tiempo real';
+
+  _stopPreviewPolling();
+  _resetPreviewSeguido();
+
+  // Pre-fill input (hidden in modo-detalle but used by poll/refresh)
+  const input = document.getElementById('seguirInputModal');
+  if (input) input.value = especie;
+
+  modal.classList.add('active');
+  _cargarPreviewSeguido(especie);
+  _startPreviewPolling();
+}
+
+// ── Nueva orden con especie pre-cargada ───────────────────────────────────────
+
+function abrirModalOrdenConEspecie(especie) {
+  _resetNuevaOrdenForm();
+  const fEspecie = document.getElementById('f-especie');
+  if (fEspecie) {
+    fEspecie.value = especie.toUpperCase();
+    // Trigger the input event so the orderbook loads automatically
+    fEspecie.dispatchEvent(new Event('input'));
+  }
+  abrirModalOrden();
 }
 
 // ── Modal Agregar Seguido ─────────────────────────────────────────────────────
@@ -6903,7 +7016,17 @@ async function abrirModalSeguido() {
 
 function cerrarModalSeguido() {
   _stopPreviewPolling();
-  document.getElementById('modalAgregarSeguido')?.classList.remove('active');
+  const modal = document.getElementById('modalAgregarSeguido');
+  if (!modal) return;
+  modal.classList.remove('active');
+
+  // Restore to "agregar" mode in case it was opened in detalle mode
+  const inner     = modal.querySelector('.modal-seguido');
+  const titulo    = document.getElementById('modalSeguidoTitulo');
+  const subtitulo = document.getElementById('modalSeguidoSubtitulo');
+  inner?.classList.remove('modo-detalle');
+  if (titulo)    titulo.textContent    = 'Agregar activo a Seguidos';
+  if (subtitulo) subtitulo.textContent = 'Buscá un instrumento, revisá su info y agregalo a tu lista';
 }
 
 function _resetPreviewSeguido() {
@@ -7044,10 +7167,10 @@ async function confirmarAgregarSeguido() {
   }
 }
 
-function eliminarSeguido(el) {
+function eliminarSeguido(el, especieOverride) {
   const seguido_id = Number(el.dataset.id);
-  const row = el.closest('tr');
-  const especie = row ? row.querySelector('td').textContent.trim() : 'activo';
+  const row = el.closest?.('tr');
+  const especie = especieOverride || (row ? row.querySelector('.especie-link')?.textContent.trim() : null) || 'activo';
 
   _confirmar(
     'Quitar seguido',
