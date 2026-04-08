@@ -12,6 +12,8 @@ class PrecioMercado(Base):
     variacion_pct: % change vs the previous stored price.
     volumen_dia / vwap: intraday volume and volume-weighted average price;
         reset to 0 whenever fecha_volumen != today.
+
+    OHLC fields store daily price ranges for watchlist tracking.
     """
 
     __tablename__ = "precios_mercado"
@@ -29,6 +31,13 @@ class PrecioMercado(Base):
     vwap = Column(Float, default=0.0, nullable=False)
     fecha_volumen = Column(Date, nullable=True)  # date the counters belong to
 
+    # ── Daily OHLC (Open, High, Low, Close) ────────────────────────────────────
+    precio_apertura = Column(Float, nullable=True)   # Open price (today)
+    precio_cierre = Column(Float, nullable=True)     # Close price (previous day or last known close)
+    precio_minimo = Column(Float, nullable=True)     # Low price (today)
+    precio_maximo = Column(Float, nullable=True)     # High price (today)
+    fecha_ohlc = Column(Date, nullable=True)         # Date these OHLC values belong to
+
     def to_dict(self) -> dict:
         return {
             "especie": self.especie,
@@ -42,4 +51,9 @@ class PrecioMercado(Base):
             ),
             "volumen_dia": self.volumen_dia or 0,
             "vwap": round(self.vwap, 4) if self.vwap else 0.0,
+            "precio_apertura": self.precio_apertura,
+            "precio_cierre": self.precio_cierre,
+            "precio_minimo": self.precio_minimo,
+            "precio_maximo": self.precio_maximo,
+            "fecha_ohlc": self.fecha_ohlc.isoformat() if self.fecha_ohlc else None,
         }

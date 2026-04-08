@@ -875,3 +875,311 @@ html.theme-sap .admin-nav-group-label { font-family: Arial, Helvetica, sans-seri
 html.theme-sap .bot-params input { font-family: Arial, Helvetica, sans-serif; background: #FFFFFF; }
 html.theme-sap .bt-label { font-family: Arial, Helvetica, sans-serif; background: #E8E8E8; }
 
+/* ── SEGUIDOS — toolbar ───────────────────────────────────────────────────────── */
+.seguidos-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── SEGUIDOS (Watchlist table) ───────────────────────────────────────────────── */
+.seguidos-add-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  margin-bottom: 12px;
+}
+
+.seguidos-add-panel label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.seguidos-input-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.seguidos-input-group input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: var(--bg1);
+  color: var(--text1);
+  font-size: 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+
+.seguidos-input-group input::placeholder {
+  color: var(--text3);
+}
+
+.seguidos-input-group input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0, 195, 255, 0.1);
+}
+
+.seguidos-input-group button {
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Seguidos table */
+.seguidos-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.seguidos-table thead {
+  background: var(--bg2);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.seguidos-table thead th {
+  padding: 8px 6px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text3);
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.seguidos-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.15s ease;
+}
+
+.seguidos-table tbody tr:hover {
+  background-color: var(--bg2);
+}
+
+.seguidos-table tbody td {
+  padding: 8px 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  white-space: nowrap;
+}
+
+.seguidos-table td:first-child {
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 70px;
+}
+
+/* Price colors based on variation */
+.seguidos-table .precio-cell {
+  text-align: right;
+  min-width: 70px;
+}
+
+.seguidos-table .var-positiva {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.seguidos-table .var-negativa {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.seguidos-table .var-neutral {
+  color: var(--text2);
+}
+
+.seguidos-table .cantidad-cell {
+  text-align: right;
+  color: var(--text2);
+  min-width: 60px;
+}
+
+.seguidos-table .minmax-cell {
+  text-align: right;
+  color: var(--text3);
+  font-size: 10px;
+  min-width: 70px;
+}
+
+.seguidos-table .acciones {
+  text-align: center;
+  min-width: 40px;
+}
+
+.seguidos-table .btn-remove {
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.seguidos-table .btn-remove:hover {
+  background-color: rgba(255, 0, 0, 0.1);
+  color: var(--red);
+}
+
+/* Empty state */
+.seguidos-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+/* ── MODAL AGREGAR SEGUIDO ─────────────────────────────────────────────────────── */
+.modal-seguido {
+  min-width: 780px;
+  max-width: 900px;
+}
+
+.modal-seguido-body {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 16px;
+  padding: 16px;
+  min-height: 340px;
+  overflow: hidden;
+}
+
+.seguido-col-left {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.seguido-col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-left: 1px solid var(--border);
+  padding-left: 16px;
+}
+
+.seguido-ob-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Preview card */
+.seguido-preview {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  padding: 14px;
+  border-radius: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.seguido-preview-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.seguido-preview-especie {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.seguido-preview-var {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.seguido-preview-var.pos { color: var(--green); }
+.seguido-preview-var.neg { color: var(--red); }
+.seguido-preview-var.neu { color: var(--text3); }
+
+.seguido-preview-precio {
+  font-size: 28px;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text1);
+  line-height: 1;
+}
+
+.seguido-preview-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  margin-top: 4px;
+}
+
+.seguido-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.seguido-stat-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.seguido-stat-val {
+  font-size: 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text2);
+}
+
+/* Placeholder */
+.seguido-preview-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 20px;
+  color: var(--text3);
+  font-size: 12px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  flex: 1;
+}
+
+/* Override ob-panel height inside modal */
+#obPanelSeguido {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+

@@ -35,6 +35,8 @@ from app.models.operador import Operador
 from app.models.config_sistema import ConfigSistema
 # Feature — user alert rules
 from app.models.alerta_usuario import AlertaUsuario
+# Feature — user watchlist
+from app.models.usuario_seguido import UsuarioSeguido
 
 __all__ = [
     "Account", "AccountEntry",
@@ -50,4 +52,5 @@ __all__ = [
     "Operador",
     "ConfigSistema",
     "AlertaUsuario",
+    "UsuarioSeguido",
 ]

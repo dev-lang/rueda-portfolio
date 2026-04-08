@@ -38,7 +38,7 @@ from app.routers import (
     auth, users, clientes, admin, cuentas,
     contrapartes, liquidaciones, riesgo,
     instrumentos, pnl, tipo_cambio, reportes_regulatorios,
-    operadores, firma, alertas,
+    operadores, firma, alertas, seguidos,
 )
 
 # Simulator
@@ -197,6 +197,7 @@ fastapi_app.include_router(reportes_regulatorios.router)
 fastapi_app.include_router(operadores.router)
 fastapi_app.include_router(firma.router)
 fastapi_app.include_router(alertas.router)
+fastapi_app.include_router(seguidos.router)
 
 
 # ── Socket.IO events ──────────────────────────────────────────────────────────

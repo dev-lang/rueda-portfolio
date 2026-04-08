@@ -547,6 +547,7 @@ const VIEW_LABELS = {
   informes:     'Informes',
   utilitarios:  'Utilitarios',
   mercado:      'Mercado',
+  seguidos:     'Seguidos',
   admin:        'Admin',
 };
 
@@ -583,6 +584,7 @@ function setView(viewName, { pushHistory = true } = {}) {
   if (viewName === 'informes')      cargarInformes();
   if (viewName === 'utilitarios')   cargarUtilitarios();
   if (viewName === 'mercado')       cargarMercado();
+  if (viewName === 'seguidos')      cargarSeguidos();
 }
 
 // Restore view on browser back/forward
@@ -659,6 +661,29 @@ function initNav() {
   document.querySelectorAll('.nav-item[data-view]').forEach(item => {
     item.addEventListener('click', () => setView(item.dataset.view));
   });
+}
+
+/**
+ * Initialize event listeners for the Seguidos (watchlist) section.
+ */
+function initSeguidos() {
+  const inputModal = document.getElementById('seguirInputModal');
+  if (inputModal) {
+    let _segTimer = null;
+    inputModal.addEventListener('input', () => {
+      clearTimeout(_segTimer);
+      const esp = inputModal.value.trim().toUpperCase();
+      if (esp.length >= 2) {
+        _segTimer = setTimeout(() => _cargarPreviewSeguido(esp), 400);
+      } else {
+        _resetPreviewSeguido();
+      }
+    });
+    inputModal.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); confirmarAgregarSeguido(); }
+      if (e.key === 'Escape') { e.preventDefault(); cerrarModalSeguido(); }
+    });
+  }
 }
 
 /**
@@ -1718,7 +1743,7 @@ document.getElementById('globalSearch').addEventListener('input', function() {
 
 // ── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────────
 // Views in order for 1–7 keys
-const _VIEW_KEYS = ['ordenes','blotter','posiciones','transacciones','informes','utilitarios','mercado'];
+const _VIEW_KEYS = ['ordenes','blotter','posiciones','transacciones','informes','utilitarios','mercado','seguidos'];
 
 // Map each view to the tbody id of its primary navigable table
 const _VIEW_TBODY = {
@@ -1726,6 +1751,7 @@ const _VIEW_TBODY = {
   blotter:      'blotterBody',
   posiciones:   'posicionesBody',
   transacciones:'transaccionesBody',
+  seguidos:     'tbl-seguidos-body',
 };
 
 // Map admin sub-tab names to their navigable tbody ids
@@ -1743,6 +1769,7 @@ const _VIEW_REFRESH = {
   informes:     () => cargarInformes(),
   utilitarios:  () => cargarUtilitarios(),
   mercado:      () => cargarMercado(),
+  seguidos:     () => cargarSeguidos(),
 };
 
 let _kbFocusedRow = null;   // currently highlighted row for arrow-key nav
@@ -3311,6 +3338,7 @@ async function init() {
   initTableSort();          // instrument all static table headers for sort
   initFilterPersistence();  // attach change listeners for filter persistence
   initFilterReloads();      // attach change/input listeners for filter reload triggers
+  initSeguidos();           // attach event listeners for watchlist section
   _restoreStaticFilters();  // restore inputs + static selects immediately
   initSocket();
   await cargarFiltros();
@@ -3448,6 +3476,13 @@ const ACTIONS = {
   'refrescar-mercado':  () => refrescarMercado?.(),
   'mercado-tab':        (el) => switchMercadoTab?.(el.dataset.mercadoTab),
   'snapshot-cierre':    () => snapshotCierre?.(),
+
+  // ── Seguidos (Watchlist) ──────────────────────────────────────────────────
+  'refrescar-seguidos':   () => refrescarSeguidos?.(),
+  'abrir-modal-seguido':  () => abrirModalSeguido(),
+  'cerrar-modal-seguido': () => cerrarModalSeguido(),
+  'confirmar-seguido':    () => confirmarAgregarSeguido(),
+  'eliminar-seguido':     (el) => eliminarSeguido(el),
 
   // ── Admin — Operadores ────────────────────────────────────────────────────
   'abrir-modal-cuenta-dep': (el) => abrirModalCuenta('operador', 'CREDIT', Number(el.dataset.id), el.dataset.nombre),
@@ -6754,5 +6789,280 @@ async function snapshotPrecios() {
     }
   } catch (e) {
     if (resEl) resEl.innerHTML = '<span style="color:var(--red)">Error de red.</span>';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// ── SEGUIDOS (User Watchlist) ──────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
+
+// ── Shared formatters ────────────────────────────────────────────────────────
+const _fmtP = (v) => (v == null || v === 0) ? '—'
+  : Number(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const _fmtV = (v) => v == null ? '—' : (v >= 0 ? '+' : '') + Number(v).toFixed(2);
+const _varCls = (v) => v == null ? 'var-neutral' : (v >= 0 ? 'var-positiva' : 'var-negativa');
+
+async function cargarSeguidos() {
+  try {
+    const res  = await apiFetch('/api/seguidos/lista');
+    const data = await res.json();
+    const tbody    = document.getElementById('tbl-seguidos-body');
+    const emptyDiv = document.getElementById('seguidos-empty');
+
+    if (!data || data.length === 0) {
+      tbody.innerHTML = '';
+      if (emptyDiv) emptyDiv.style.display = 'flex';
+      return;
+    }
+    if (emptyDiv) emptyDiv.style.display = 'none';
+
+    tbody.innerHTML = data.map(s => {
+      const minMax = (s.precio_minimo_dia && s.precio_maximo_dia)
+        ? `${_fmtP(s.precio_minimo_dia)} - ${_fmtP(s.precio_maximo_dia)}` : '—';
+      return `<tr data-id="${s.id}">
+        <td>${esc(s.especie)}</td>
+        <td class="precio-cell">${_fmtP(s.precio_actual)}</td>
+        <td class="precio-cell ${_varCls(s.variacion_diaria)}">${_fmtV(s.variacion_diaria)}%</td>
+        <td class="precio-cell">${_fmtP(s.precio_cierre)}</td>
+        <td class="cantidad-cell">${s.cantidad_compra}</td>
+        <td class="precio-cell">${_fmtP(s.precio_promedio_compra)}</td>
+        <td class="cantidad-cell">${s.cantidad_venta}</td>
+        <td class="precio-cell">${_fmtP(s.precio_promedio_venta)}</td>
+        <td class="minmax-cell">${minMax}</td>
+        <td class="acciones">
+          <button class="btn-remove" data-action="eliminar-seguido" data-id="${s.id}" title="Remover" aria-label="Remover">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch {
+    document.getElementById('tbl-seguidos-body').innerHTML =
+      '<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:12px">Error al cargar seguidos.</td></tr>';
+    const emptyDiv = document.getElementById('seguidos-empty');
+    if (emptyDiv) emptyDiv.style.display = 'none';
+  }
+}
+
+// ── Modal Agregar Seguido ─────────────────────────────────────────────────────
+
+async function abrirModalSeguido() {
+  const modal = document.getElementById('modalAgregarSeguido');
+  if (!modal) return;
+
+  // Reset state
+  _resetPreviewSeguido();
+  const input = document.getElementById('seguirInputModal');
+  if (input) { input.value = ''; input.focus(); }
+
+  const btnConfirmar = document.getElementById('btnConfirmarSeguido');
+  if (btnConfirmar) btnConfirmar.disabled = true;
+
+  // Populate datalist
+  try {
+    const res = await apiFetch('/api/seguidos/especies');
+    const especies = await res.json();
+    const datalist = document.getElementById('especiesListModal');
+    if (datalist) datalist.innerHTML = especies.map(e => `<option value="${e}">`).join('');
+  } catch { /* non-critical */ }
+
+  modal.classList.add('active');
+}
+
+function cerrarModalSeguido() {
+  document.getElementById('modalAgregarSeguido')?.classList.remove('active');
+}
+
+function _resetPreviewSeguido() {
+  document.getElementById('seguido-preview')?.style.setProperty('display', 'none');
+  const ph = document.getElementById('seguido-preview-placeholder');
+  if (ph) ph.style.display = '';
+  document.getElementById('obPanelSeguido').innerHTML =
+    '<div class="ob-placeholder">Ingresá una especie para ver las puntas</div>';
+  const btnConfirmar = document.getElementById('btnConfirmarSeguido');
+  if (btnConfirmar) btnConfirmar.disabled = true;
+}
+
+async function _cargarPreviewSeguido(especie) {
+  // Load price preview
+  const pm = document.getElementById('seguido-preview');
+  const ph = document.getElementById('seguido-preview-placeholder');
+
+  try {
+    const res  = await apiFetch(`/api/seguidos/preview/${encodeURIComponent(especie)}`);
+    if (!res.ok) { _resetPreviewSeguido(); return; }
+    const data = await res.json();
+
+    // Populate preview card
+    document.getElementById('sp-especie').textContent = especie;
+
+    const varVal = data.variacion_pct;
+    const varEl  = document.getElementById('sp-var');
+    varEl.textContent = varVal != null ? (varVal >= 0 ? '+' : '') + varVal.toFixed(2) + '%' : '—';
+    varEl.className = 'seguido-preview-var ' + (varVal == null ? 'neu' : varVal >= 0 ? 'pos' : 'neg');
+
+    document.getElementById('sp-precio').textContent = data.precio != null ? _fmtP(data.precio) : '—';
+    document.getElementById('sp-cierre').textContent = _fmtP(data.precio_cierre);
+    document.getElementById('sp-min').textContent    = _fmtP(data.precio_minimo);
+    document.getElementById('sp-max').textContent    = _fmtP(data.precio_maximo);
+    document.getElementById('sp-vol').textContent    = data.volumen_dia
+      ? Number(data.volumen_dia).toLocaleString('es-AR') : '—';
+
+    if (ph) ph.style.display = 'none';
+    if (pm) pm.style.display = '';
+
+    // Enable confirm button
+    const btn = document.getElementById('btnConfirmarSeguido');
+    if (btn) btn.disabled = false;
+  } catch {
+    _resetPreviewSeguido();
+  }
+
+  // Load orderbook independently (non-blocking)
+  try {
+    const obRes  = await apiFetch(`/api/orderbook/${encodeURIComponent(especie)}`);
+    const obData = await obRes.json();
+    _renderOrderbookSeguido(obData);
+  } catch {
+    document.getElementById('obPanelSeguido').innerHTML = '<div class="ob-error">Error al cargar puntas</div>';
+  }
+}
+
+function _renderOrderbookSeguido(data) {
+  const panel = document.getElementById('obPanelSeguido');
+  if (!panel) return;
+
+  if (!data.tiene_datos) {
+    panel.innerHTML = `<div class="ob-placeholder">Sin datos para <b>${esc(data.especie)}</b></div>`;
+    return;
+  }
+
+  const fmt  = v => v == null ? '—' : Number(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtQ = v => v == null ? '—' : Number(v).toLocaleString('es-AR');
+
+  const allQty = [...data.bids, ...data.asks].map(r => r.cantidad || 0).filter(Boolean);
+  const maxQty = allQty.length ? Math.max(...allQty) : 1;
+
+  const varStr = data.variacion_pct != null
+    ? `<span class="ob-var ${data.variacion_pct >= 0 ? 'ob-var-pos' : 'ob-var-neg'}">${data.variacion_pct >= 0 ? '+' : ''}${data.variacion_pct}%</span>`
+    : '';
+
+  const numRows = Math.max(data.bids.length, data.asks.length, 1);
+  let rows = '';
+  for (let i = 0; i < numRows; i++) {
+    const bid = data.bids[i] || null;
+    const ask = data.asks[i] || null;
+    const bidPct = bid?.cantidad ? Math.round(bid.cantidad / maxQty * 100) : 0;
+    const askPct = ask?.cantidad ? Math.round(ask.cantidad / maxQty * 100) : 0;
+    rows += `<tr class="ob4-row">
+      <td class="ob4-bid-qty" style="--d:${bidPct}%">${bid ? fmtQ(bid.cantidad) : ''}</td>
+      <td class="ob4-bid-price">${bid ? fmt(bid.precio) : ''}</td>
+      <td class="ob4-ask-price">${ask ? fmt(ask.precio) : ''}</td>
+      <td class="ob4-ask-qty" style="--d:${askPct}%">${ask ? fmtQ(ask.cantidad) : ''}</td>
+    </tr>`;
+  }
+  if (!data.bids.length && !data.asks.length) {
+    rows = `<tr><td colspan="4" style="padding:8px 4px;color:var(--text3);font-size:11px;text-align:center">Sin puntas disponibles</td></tr>`;
+  }
+
+  panel.innerHTML = `
+    <div class="ob-header">
+      <div class="ob-especie-name">${esc(data.especie)}</div>
+      <div class="ob-last-line">${data.ultimo != null ? fmt(data.ultimo) : '—'}${varStr}</div>
+    </div>
+    <table class="ob-table ob4-table">
+      <thead><tr>
+        <th class="ob4-th ob4-th-r">Cant.</th>
+        <th class="ob4-th ob4-th-r">Compra</th>
+        <th class="ob4-th">Venta</th>
+        <th class="ob4-th">Cant.</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+async function confirmarAgregarSeguido() {
+  const input   = document.getElementById('seguirInputModal');
+  const especie = (input?.value || '').trim().toUpperCase();
+  if (!especie) return;
+
+  const btn = document.getElementById('btnConfirmarSeguido');
+  if (btn) { btn.disabled = true; btn.textContent = 'Agregando...'; }
+
+  try {
+    const res = await apiFetch('/api/seguidos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ especie, precio_compra_meta: null, precio_venta_meta: null }),
+    });
+
+    if (res.ok) {
+      cerrarModalSeguido();
+      showToast(`${especie} agregado a seguidos ✓`, 'success');
+      await cargarSeguidos();
+    } else {
+      const err = await res.json();
+      showToast(err.detail || 'Error al agregar', 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = '+ Agregar a Seguidos'; }
+    }
+  } catch {
+    showToast('Error de red', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '+ Agregar a Seguidos'; }
+  }
+}
+
+function eliminarSeguido(el) {
+  const seguido_id = Number(el.dataset.id);
+  const row = el.closest('tr');
+  const especie = row ? row.querySelector('td').textContent.trim() : 'activo';
+
+  _confirmar(
+    'Quitar seguido',
+    `¿Removés ${especie} de tu lista de seguidos?`,
+    async () => {
+      try {
+        const res = await apiFetch(`/api/seguidos/${seguido_id}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast(`${especie} removido ✓`, 'success');
+          await cargarSeguidos();
+        } else {
+          showToast('Error al remover', 'error');
+        }
+      } catch (e) {
+        showToast('Error de red', 'error');
+      }
+    }
+  );
+}
+
+async function refrescarSeguidos() {
+  const btn = document.getElementById('btnRefreshSeguidos');
+  if (!btn) return;
+
+  const svgHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>`;
+  btn.disabled = true;
+  btn.classList.add('spinning');
+  btn.innerHTML = `${svgHTML} Actualizando...`;
+
+  try {
+    // First refresh market prices
+    await apiFetch('/api/mercado/refresh', { method: 'POST' });
+    // Then reload watchlist
+    await cargarSeguidos();
+    btn.classList.remove('spinning');
+    btn.innerHTML = `${svgHTML} ✓ Actualizado`;
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.innerHTML = `${svgHTML} Actualizar`;
+    }, 2000);
+  } catch (e) {
+    btn.classList.remove('spinning');
+    btn.innerHTML = `${svgHTML} Error`;
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.innerHTML = `${svgHTML} Actualizar`;
+    }, 2000);
   }
 }

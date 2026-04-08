@@ -131,6 +131,21 @@ def run_migrations(engine: Engine) -> None:
         "CREATE TABLE IF NOT EXISTS alertas_usuario (id INTEGER PRIMARY KEY, username VARCHAR(50) NOT NULL, tipo VARCHAR(30) NOT NULL, cliente VARCHAR(50), especie VARCHAR(20), umbral NUMERIC(18,2) NOT NULL, moneda VARCHAR(5) NOT NULL DEFAULT 'ARP', activo BOOLEAN NOT NULL DEFAULT 1, created_at DATETIME, ultima_vez DATETIME)",
         "CREATE INDEX IF NOT EXISTS idx_alertas_username ON alertas_usuario(username)",
 
+        # ── precios_mercado — daily OHLC (Open, High, Low, Close) ─────────────
+        # Used for watchlist price range display
+        "ALTER TABLE precios_mercado ADD COLUMN precio_apertura REAL",
+        "ALTER TABLE precios_mercado ADD COLUMN precio_cierre REAL",
+        "ALTER TABLE precios_mercado ADD COLUMN precio_minimo REAL",
+        "ALTER TABLE precios_mercado ADD COLUMN precio_maximo REAL",
+        "ALTER TABLE precios_mercado ADD COLUMN fecha_ohlc DATE",
+
+        # ── usuario_seguido — user watchlist ──────────────────────────────────
+        # Table is created by create_all() on first run; these are safe no-ops
+        # on existing databases that pre-date the feature.
+        "CREATE TABLE IF NOT EXISTS usuario_seguido (id INTEGER PRIMARY KEY, usuario_id INTEGER NOT NULL, especie VARCHAR(20) NOT NULL, precio_compra_meta REAL, precio_venta_meta REAL, created_at DATETIME, FOREIGN KEY(usuario_id) REFERENCES users(id), FOREIGN KEY(especie) REFERENCES especies_mercado(especie), UNIQUE(usuario_id, especie))",
+        "CREATE INDEX IF NOT EXISTS idx_usuario_seguido_usuario_id ON usuario_seguido(usuario_id)",
+        "CREATE INDEX IF NOT EXISTS idx_usuario_seguido_especie ON usuario_seguido(especie)",
+
         # ── indexes ───────────────────────────────────────────────────────────
         # CREATE INDEX IF NOT EXISTS is idempotent — safe to run on any DB state.
 

@@ -42,6 +42,7 @@
     <a class="nav-item" data-view="informes" title="Informes (6)">Informes</a>
     <a class="nav-item" data-view="utilitarios" title="Utilitarios (7)">Utilitarios</a>
     <a class="nav-item" data-view="mercado">Mercado</a>
+    <a class="nav-item" data-view="seguidos">Seguidos</a>
     <a class="nav-item admin-only" data-view="admin" style="display:none">Admin</a>
   </nav>
 
@@ -118,6 +119,7 @@
       <a class="sidebar-nav-item nav-item" data-view="informes">Informes</a>
       <a class="sidebar-nav-item nav-item" data-view="utilitarios">Utilitarios</a>
       <a class="sidebar-nav-item nav-item" data-view="mercado">Mercado</a>
+      <a class="sidebar-nav-item nav-item" data-view="seguidos">Seguidos</a>
       <a class="sidebar-nav-item nav-item admin-only" data-view="admin" style="display:none">Admin</a>
     </div>
 
@@ -1009,6 +1011,73 @@
           </section>
         </div>
       </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!--  VISTA: SEGUIDOS                                          -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div id="view-seguidos" class="view-section">
+      <div class="view-heading">Seguidos</div>
+
+      <!-- ── Barra de acciones (fuera del panel) ─────────────────── -->
+      <div class="seguidos-toolbar">
+        <button class="btn-nueva-orden" id="btnAbreModalSeguido" data-action="abrir-modal-seguido">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          Agregar activo
+        </button>
+        <button class="btn-refresh" id="btnRefreshSeguidos" data-action="refrescar-seguidos" aria-label="Actualizar precios">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+          Actualizar
+        </button>
+      </div>
+
+      <!-- ── Panel de lista ──────────────────────────────────────── -->
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Mi Lista de Seguidos</div>
+        </div>
+
+        <!-- Seguidos table -->
+        <div class="table-wrap">
+          <table class="seguidos-table">
+            <thead>
+              <tr>
+                <th>Símbolo</th>
+                <th style="text-align:right">Precio</th>
+                <th style="text-align:right">Var %</th>
+                <th style="text-align:right">Cierre</th>
+                <th style="text-align:right">Cant. Compra</th>
+                <th style="text-align:right">Precio Compra</th>
+                <th style="text-align:right">Cant. Venta</th>
+                <th style="text-align:right">Precio Venta</th>
+                <th style="text-align:right">Min-Max Día</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tbl-seguidos-body">
+              <tr class="loading-row"><td colspan="10"><div class="spinner"></div> Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty state -->
+        <div id="seguidos-empty" class="seguidos-empty" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40" style="color:var(--text3);margin-bottom:12px">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <div style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:6px">Sin activos en tu lista</div>
+          <div style="font-size:12px;color:var(--text3)">
+            Usá el botón <strong>Agregar activo</strong> para comenzar.
+          </div>
+        </div>
+      </section>
     </div>
 
 
@@ -2986,6 +3055,91 @@
       <div id="chartRsiContainer" style="width:100%;height:120px;display:none;margin-top:2px"></div>
       <div class="chart-pane-label" id="chartMacdLabel" style="display:none">MACD (12, 26, 9)</div>
       <div id="chartMacdContainer" style="width:100%;height:120px;display:none;margin-top:2px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL AGREGAR SEGUIDO ─────────────────────────────────── -->
+<div class="modal-overlay" id="modalAgregarSeguido" data-action="cerrar-modal-seguido" role="dialog" aria-modal="true" aria-labelledby="modalSeguidoTitulo">
+  <div class="modal modal-seguido">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalSeguidoTitulo">Agregar activo a Seguidos</div>
+        <div class="modal-subtitle">Buscá un instrumento, revisá su info y agregalo a tu lista</div>
+      </div>
+      <button class="modal-close" title="Cerrar (Esc)" data-action="cerrar-modal-seguido" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body modal-seguido-body">
+
+      <!-- Columna izquierda: búsqueda + preview -->
+      <div class="seguido-col-left">
+        <div class="form-group">
+          <label>Especie</label>
+          <input
+            type="text"
+            id="seguirInputModal"
+            placeholder="Ej: GGAL, YPFD, BBAR..."
+            list="especiesListModal"
+            autocomplete="off"
+            style="text-transform:uppercase"
+          >
+          <datalist id="especiesListModal"></datalist>
+        </div>
+
+        <!-- Preview card -->
+        <div id="seguido-preview" class="seguido-preview" style="display:none">
+          <div class="seguido-preview-header">
+            <span class="seguido-preview-especie" id="sp-especie"></span>
+            <span class="seguido-preview-var" id="sp-var"></span>
+          </div>
+          <div class="seguido-preview-precio" id="sp-precio"></div>
+          <div class="seguido-preview-stats">
+            <div class="seguido-stat">
+              <span class="seguido-stat-label">Cierre ant.</span>
+              <span class="seguido-stat-val" id="sp-cierre"></span>
+            </div>
+            <div class="seguido-stat">
+              <span class="seguido-stat-label">Mín. día</span>
+              <span class="seguido-stat-val" id="sp-min"></span>
+            </div>
+            <div class="seguido-stat">
+              <span class="seguido-stat-label">Máx. día</span>
+              <span class="seguido-stat-val" id="sp-max"></span>
+            </div>
+            <div class="seguido-stat">
+              <span class="seguido-stat-label">Volumen</span>
+              <span class="seguido-stat-val" id="sp-vol"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Placeholder mientras no hay especie seleccionada -->
+        <div id="seguido-preview-placeholder" class="seguido-preview-placeholder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <span>Buscá una especie para ver su información</span>
+        </div>
+      </div>
+
+      <!-- Columna derecha: caja de puntas -->
+      <div class="seguido-col-right">
+        <div class="seguido-ob-label">Puntas</div>
+        <div class="ob-panel" id="obPanelSeguido">
+          <div class="ob-placeholder">Ingresá una especie para ver las puntas</div>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cerrar" data-action="cerrar-modal-seguido">Cancelar</button>
+      <button class="btn-nueva-orden" id="btnConfirmarSeguido" data-action="confirmar-seguido" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+        </svg>
+        Agregar a Seguidos
+      </button>
     </div>
   </div>
 </div>
