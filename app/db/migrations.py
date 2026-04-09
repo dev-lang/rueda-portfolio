@@ -145,6 +145,9 @@ def run_migrations(engine: Engine) -> None:
         "CREATE TABLE IF NOT EXISTS usuario_seguido (id INTEGER PRIMARY KEY, usuario_id INTEGER NOT NULL, especie VARCHAR(20) NOT NULL, precio_compra_meta REAL, precio_venta_meta REAL, created_at DATETIME, FOREIGN KEY(usuario_id) REFERENCES users(id), FOREIGN KEY(especie) REFERENCES especies_mercado(especie), UNIQUE(usuario_id, especie))",
         "CREATE INDEX IF NOT EXISTS idx_usuario_seguido_usuario_id ON usuario_seguido(usuario_id)",
         "CREATE INDEX IF NOT EXISTS idx_usuario_seguido_especie ON usuario_seguido(especie)",
+        # orden: manual sort position added after initial table creation
+        "ALTER TABLE usuario_seguido ADD COLUMN orden INTEGER",
+        "CREATE INDEX IF NOT EXISTS idx_usuario_seguido_orden ON usuario_seguido(usuario_id, orden)",
 
         # ── indexes ───────────────────────────────────────────────────────────
         # CREATE INDEX IF NOT EXISTS is idempotent — safe to run on any DB state.

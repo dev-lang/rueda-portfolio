@@ -6826,6 +6826,13 @@ async function cargarSeguidos() {
       const minMax = (s.precio_minimo_dia && s.precio_maximo_dia)
         ? `${_fmtP(s.precio_minimo_dia)} - ${_fmtP(s.precio_maximo_dia)}` : '—';
       return `<tr data-id="${s.id}">
+        <td class="drag-handle" title="Arrastrar para reordenar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+            <circle cx="9" cy="6" r="1" fill="currentColor"/><circle cx="15" cy="6" r="1" fill="currentColor"/>
+            <circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/>
+            <circle cx="9" cy="18" r="1" fill="currentColor"/><circle cx="15" cy="18" r="1" fill="currentColor"/>
+          </svg>
+        </td>
         <td><span class="especie-link" data-action="abrir-ctx-seguido" data-especie="${esc(s.especie)}" data-id="${s.id}">${esc(s.especie)}</span></td>
         <td class="precio-cell">${_fmtP(s.precio_actual)}</td>
         <td class="precio-cell ${_varCls(s.variacion_diaria)}">${_fmtV(s.variacion_diaria)}%</td>
@@ -6844,11 +6851,114 @@ async function cargarSeguidos() {
         </td>
       </tr>`;
     }).join('');
+
+    _initDragSeguidos();
   } catch {
     document.getElementById('tbl-seguidos-body').innerHTML =
-      '<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:12px">Error al cargar seguidos.</td></tr>';
+      '<tr><td colspan="11" style="text-align:center;color:var(--text3);padding:12px">Error al cargar seguidos.</td></tr>';
     const emptyDiv = document.getElementById('seguidos-empty');
     if (emptyDiv) emptyDiv.style.display = 'none';
+  }
+}
+
+// ── Drag & drop para reordenar seguidos ──────────────────────────────────────
+
+let _dragSrc       = null;  // fila siendo arrastrada
+let _ordenSnapshot = null;  // IDs en orden previo al drag (para rollback)
+
+function _initDragSeguidos() {
+  const tbody = document.getElementById('tbl-seguidos-body');
+  if (!tbody || tbody._dndBound) return;
+  tbody._dndBound = true;
+
+  // Activar draggable solo cuando el pointerdown viene del handle
+  tbody.addEventListener('pointerdown', (e) => {
+    const row = e.target.closest('tr');
+    if (!row) return;
+    row.draggable = !!e.target.closest('.drag-handle');
+  });
+
+  tbody.addEventListener('dragstart', (e) => {
+    const row = e.target.closest('tr[data-id]');
+    if (!row || !row.draggable) {
+      e.preventDefault();
+      return;
+    }
+    _dragSrc       = row;
+    _ordenSnapshot = Array.from(tbody.querySelectorAll('tr[data-id]')).map(r => r.dataset.id);
+    row.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', row.dataset.id); // requerido por Firefox
+  });
+
+  tbody.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const target = e.target.closest('tr[data-id]');
+    if (!target || target === _dragSrc) return;
+
+    tbody.querySelectorAll('tr.drag-over-top, tr.drag-over-bottom')
+         .forEach(r => r.classList.remove('drag-over-top', 'drag-over-bottom'));
+
+    const rect = target.getBoundingClientRect();
+    if (e.clientY < rect.top + rect.height / 2) {
+      target.classList.add('drag-over-top');
+      tbody.insertBefore(_dragSrc, target);
+    } else {
+      target.classList.add('drag-over-bottom');
+      tbody.insertBefore(_dragSrc, target.nextSibling);
+    }
+  });
+
+  tbody.addEventListener('dragleave', (e) => {
+    const target = e.target.closest('tr[data-id]');
+    if (target) target.classList.remove('drag-over-top', 'drag-over-bottom');
+  });
+
+  tbody.addEventListener('drop', (e) => {
+    e.preventDefault();
+    tbody.querySelectorAll('tr.drag-over-top, tr.drag-over-bottom')
+         .forEach(r => r.classList.remove('drag-over-top', 'drag-over-bottom'));
+    if (_dragSrc) {
+      _dragSrc.classList.remove('dragging');
+      _dragSrc.draggable = false;
+    }
+    _dragSrc = null;
+    _persistirOrdenSeguidos();
+  });
+
+  tbody.addEventListener('dragend', () => {
+    tbody.querySelectorAll('tr').forEach(r => {
+      r.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom');
+      r.draggable = false;
+    });
+    _dragSrc = null;
+    _ordenSnapshot = null;
+  });
+}
+
+async function _persistirOrdenSeguidos() {
+  const tbody    = document.getElementById('tbl-seguidos-body');
+  const snapshot = _ordenSnapshot;
+  _ordenSnapshot = null;
+
+  const ids = Array.from(tbody.querySelectorAll('tr[data-id]'))
+                   .map(r => Number(r.dataset.id));
+
+  try {
+    const res = await apiFetch('/api/seguidos/reordenar', {
+      method : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify({ ids }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+  } catch {
+    showToast('Error al guardar el orden — revertiendo', 'error');
+    if (snapshot) {
+      const map = {};
+      tbody.querySelectorAll('tr[data-id]').forEach(r => { map[r.dataset.id] = r; });
+      snapshot.forEach(id => tbody.appendChild(map[id]));
+    }
   }
 }
 

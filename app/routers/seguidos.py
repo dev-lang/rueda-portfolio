@@ -11,7 +11,7 @@ GET    /api/seguidos/especies        — list available species for watchlist
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.core.deps import get_current_user
 from app.db.session import get_db
@@ -39,9 +39,14 @@ class ActualizarMetasRequest(BaseModel):
     precio_venta_meta: float | None = None
 
 
+class ReordenarRequest(BaseModel):
+    ids: list[int]
+
+
 class SeguridoResponse(BaseModel):
     id: int
     especie: str
+    orden: int | None
     # Market prices
     precio_actual: float | None
     variacion_diaria: float | None
@@ -73,7 +78,11 @@ def get_lista_seguidos(
     seguidos = db.execute(
         select(UsuarioSeguido)
         .where(UsuarioSeguido.usuario_id == user.id)
-        .order_by(UsuarioSeguido.especie)
+        .order_by(
+            UsuarioSeguido.orden.is_(None).asc(),
+            UsuarioSeguido.orden.asc(),
+            UsuarioSeguido.especie.asc(),
+        )
     ).scalars().all()
 
     if not seguidos:
@@ -129,6 +138,7 @@ def get_lista_seguidos(
         result.append(SeguridoResponse(
             id=seg.id,
             especie=seg.especie,
+            orden=seg.orden,
             precio_actual=pm.precio if pm else None,
             variacion_diaria=pm.variacion_pct if pm else None,
             precio_cierre=pm.precio_cierre if pm else None,
@@ -180,12 +190,19 @@ def agregar_seguido(
             detail=f"Already following '{req.especie}'"
         )
 
+    # Assign next order position (max + 1, or 0 if first)
+    max_orden = db.execute(
+        select(func.max(UsuarioSeguido.orden))
+        .where(UsuarioSeguido.usuario_id == user.id)
+    ).scalar()
+
     # Create new watchlist entry
     nuevo = UsuarioSeguido(
         usuario_id=user.id,
         especie=req.especie.upper(),
         precio_compra_meta=req.precio_compra_meta,
         precio_venta_meta=req.precio_venta_meta,
+        orden=(max_orden if max_orden is not None else -1) + 1,
     )
     db.add(nuevo)
     db.commit()
@@ -199,6 +216,7 @@ def agregar_seguido(
     return SeguridoResponse(
         id=nuevo.id,
         especie=nuevo.especie,
+        orden=nuevo.orden,
         precio_actual=pm.precio if pm else None,
         variacion_diaria=pm.variacion_pct if pm else None,
         precio_cierre=pm.precio_cierre if pm else None,
@@ -241,6 +259,51 @@ def eliminar_seguido(
     return {"message": f"Removed '{seguido.especie}' from watchlist"}
 
 
+@router.put("/reordenar")
+def reordenar_seguidos(
+    req: ReordenarRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Persist manual watchlist order. Receives full ordered list of seguido IDs."""
+    ids = req.ids
+
+    if not ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lista de IDs vacía")
+
+    if len(ids) != len(set(ids)):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="IDs duplicados")
+
+    seguidos = db.execute(
+        select(UsuarioSeguido).where(UsuarioSeguido.usuario_id == user.id)
+    ).scalars().all()
+
+    seguidos_map = {s.id: s for s in seguidos}
+
+    for sid in ids:
+        if sid not in seguidos_map:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"ID {sid} no pertenece a este usuario o no existe"
+            )
+
+    if set(ids) != set(seguidos_map.keys()):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La lista debe incluir todos los seguidos del usuario"
+        )
+
+    try:
+        for nueva_posicion, sid in enumerate(ids):
+            seguidos_map[sid].orden = nueva_posicion
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return {"message": "Orden actualizado", "total": len(ids)}
+
+
 @router.put("/{seguido_id}")
 def actualizar_metas(
     seguido_id: int,
@@ -280,6 +343,7 @@ def actualizar_metas(
     return SeguridoResponse(
         id=seguido.id,
         especie=seguido.especie,
+        orden=seguido.orden,
         precio_actual=pm.precio if pm else None,
         variacion_diaria=pm.variacion_pct if pm else None,
         precio_cierre=pm.precio_cierre if pm else None,

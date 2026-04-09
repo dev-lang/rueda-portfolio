@@ -5,7 +5,7 @@ One row per (user, especie) pair. Optional price targets for alerts.
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
@@ -26,10 +26,14 @@ class UsuarioSeguido(Base):
     precio_compra_meta = Column(Float, nullable=True)  # Target buy price
     precio_venta_meta = Column(Float, nullable=True)   # Target sell price
 
+    # Manual sort position — NULL until user reorders; lower = higher in list
+    orden = Column(Integer, nullable=True)
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     __table_args__ = (
         UniqueConstraint("usuario_id", "especie", name="uq_usuario_seguido"),
+        Index("idx_usuario_seguido_orden", "usuario_id", "orden"),
     )
 
     def to_dict(self) -> dict:
@@ -39,5 +43,6 @@ class UsuarioSeguido(Base):
             "especie": self.especie,
             "precio_compra_meta": self.precio_compra_meta,
             "precio_venta_meta": self.precio_venta_meta,
+            "orden": self.orden,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
