@@ -311,7 +311,7 @@ def get_bot_posiciones(
         )
         precio_actual = precios.get(especie) or 0.0
         valor_mercado = round(neta * precio_actual, 2)
-        pnl = round(valor_mercado - neta * costo_prom, 2) if neta > 0 and costo_prom > 0 else None
+        pnl = round(valor_mercado - neta * costo_prom, 2) if neta != 0 and costo_prom > 0 else None
         result.append({
             "especie": especie,
             "cantidad_comprada": d["comprada"],

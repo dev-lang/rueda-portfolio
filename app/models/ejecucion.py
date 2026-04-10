@@ -25,8 +25,8 @@ class Ejecucion(Base):
     requiere_confirmacion   = Column(Boolean, nullable=False, default=False)
 
     orden        = relationship("Orden", back_populates="ejecuciones")
-    comision     = relationship("Comision", back_populates="ejecucion", uselist=False)
-    confirmacion = relationship("Confirmacion", back_populates="ejecucion", uselist=False)
+    comision     = relationship("Comision", back_populates="ejecucion", uselist=False, cascade="all, delete-orphan")
+    confirmacion = relationship("Confirmacion", back_populates="ejecucion", uselist=False, cascade="all, delete-orphan")
     contraparte  = relationship("Contraparte")
 
     def to_dict(self) -> dict:

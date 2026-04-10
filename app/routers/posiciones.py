@@ -88,7 +88,7 @@ def posicion_consolidada(
         qty_total = g["posicion_total_neta"]
         costo_avg = g.get("costo_promedio_ponderado")
 
-        if pm and pm.precio and qty_total and costo_avg:
+        if pm is not None and pm.precio is not None and qty_total is not None and costo_avg is not None:
             pnl, pnl_pct = precio_service.calcular_pnl(qty_total, costo_avg, pm.precio)
             g["precio_mercado"]   = pm.precio
             g["variacion_pct"]    = pm.variacion_pct

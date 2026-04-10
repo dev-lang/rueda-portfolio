@@ -166,6 +166,13 @@ def debitar(
     descripcion: str | None = None,
     usuario: str = "sistema",
 ) -> AccountEntry:
+    monto_d = _to_decimal(monto)
+    balance_actual = _to_decimal(account.balance_cache)
+    if monto_d > balance_actual:
+        raise ValueError(
+            f"Saldo insuficiente: saldo actual {float(balance_actual):,.2f}, "
+            f"débito solicitado {float(monto_d):,.2f}."
+        )
     return _crear_entry(
         db, account, tipo, monto, "DEBIT",
         ref_type, ref_id, descripcion, usuario,
