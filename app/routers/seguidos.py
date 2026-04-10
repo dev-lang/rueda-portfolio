@@ -109,44 +109,36 @@ def get_lista_seguidos(
     ).scalars().all()
     precios_map = {p.especie: p for p in precios}
 
-    # Get positions filtered to user's accessible clients
+    # Get positions aggregated by especie (single query, no N+1)
     codigos = _cliente_codigos_usuario(db, user)
-    pos_query = select(Posicion).where(Posicion.especie.in_(especies))
+    pos_query = (
+        select(
+            Posicion.especie,
+            func.sum(Posicion.cantidad_comprada).label("total_comprada"),
+            func.sum(Posicion.cantidad_vendida).label("total_vendida"),
+            func.sum(Posicion.costo_promedio_compra * Posicion.cantidad_comprada).label("valor_compra"),
+            func.sum(Posicion.costo_promedio_venta * Posicion.cantidad_vendida).label("valor_venta"),
+        )
+        .where(Posicion.especie.in_(especies))
+        .group_by(Posicion.especie)
+    )
     if codigos:
         pos_query = pos_query.where(Posicion.cliente.in_(codigos))
-    posiciones = db.execute(pos_query).scalars().all()
+    pos_agg = {row.especie: row for row in db.execute(pos_query).all()}
 
     result = []
     for seg in seguidos:
         pm = precios_map.get(seg.especie)
+        agg = pos_agg.get(seg.especie)
 
-        # Aggregate positions for this especie
-        qty_buy = sum(
-            (p.cantidad_comprada for p in posiciones if p.especie == seg.especie),
-            0
+        qty_buy = int(agg.total_comprada or 0) if agg else 0
+        qty_sell = int(agg.total_vendida or 0) if agg else 0
+        precio_promedio_buy = (
+            round((agg.valor_compra or 0) / qty_buy, 4) if agg and qty_buy > 0 else 0.0
         )
-        qty_sell = sum(
-            (p.cantidad_vendida for p in posiciones if p.especie == seg.especie),
-            0
+        precio_promedio_sell = (
+            round((agg.valor_venta or 0) / qty_sell, 4) if agg and qty_sell > 0 else 0.0
         )
-
-        # Average cost (weighted by quantity)
-        posiciones_especie = [p for p in posiciones if p.especie == seg.especie]
-        if posiciones_especie and qty_buy > 0:
-            precio_promedio_buy = sum(
-                (p.costo_promedio_compra * p.cantidad_comprada for p in posiciones_especie),
-                0.0
-            ) / qty_buy
-        else:
-            precio_promedio_buy = 0.0
-
-        if posiciones_especie and qty_sell > 0:
-            precio_promedio_sell = sum(
-                (p.costo_promedio_venta * p.cantidad_vendida for p in posiciones_especie),
-                0.0
-            ) / qty_sell
-        else:
-            precio_promedio_sell = 0.0
 
         result.append(SeguridoResponse(
             id=seg.id,

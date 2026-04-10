@@ -275,14 +275,24 @@ def obtener_orden(db: Session, orden_id: int) -> Orden | None:
     return db.get(Orden, orden_id)
 
 
-def cancelar_orden(db: Session, orden_id: int, usuario: str = "sistema") -> Orden:
+def cancelar_orden(
+    db: Session, orden_id: int, usuario: str = "sistema", expected_version: int | None = None,
+) -> Orden:
     """
     Cancels an order: sets estado_color=red, instancia=Cancelada.
     Raises ValueError for invalid transitions (already cancelled or fully executed).
+    Uses SELECT FOR UPDATE to serialize concurrent modifications.
     """
-    orden = db.get(Orden, orden_id)
+    orden = db.execute(
+        select(Orden).where(Orden.id == orden_id).with_for_update()
+    ).scalar_one_or_none()
     if orden is None:
         raise ValueError(f"Orden {orden_id} no encontrada.")
+    if expected_version is not None and orden.version != expected_version:
+        raise ValueError(
+            f"Conflicto de concurrencia en orden {orden.nro_orden}: "
+            f"version esperada {expected_version}, actual {orden.version}."
+        )
     if orden.instancia == "Cancelada":
         raise ValueError(f"La orden {orden.nro_orden} ya está cancelada.")
     if orden.instancia == "Ejecutada":
@@ -333,14 +343,23 @@ def modificar_orden(
     nuevo_precio: float | None,
     nueva_cantidad: int | None,
     usuario: str = "sistema",
+    expected_version: int | None = None,
 ) -> Orden:
     """
     Updates precio_limite and/or cantidad_total on a non-terminal order.
     Raises ValueError for invalid transitions.
+    Uses SELECT FOR UPDATE to serialize concurrent modifications.
     """
-    orden = db.get(Orden, orden_id)
+    orden = db.execute(
+        select(Orden).where(Orden.id == orden_id).with_for_update()
+    ).scalar_one_or_none()
     if orden is None:
         raise ValueError(f"Orden {orden_id} no encontrada.")
+    if expected_version is not None and orden.version != expected_version:
+        raise ValueError(
+            f"Conflicto de concurrencia en orden {orden.nro_orden}: "
+            f"version esperada {expected_version}, actual {orden.version}."
+        )
     if orden.instancia in ("Ejecutada", "Cancelada"):
         raise ValueError(
             f"No se puede modificar una orden en estado '{orden.instancia}'."

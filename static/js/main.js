@@ -373,6 +373,10 @@ function abrirNotifPanel() {
 
 // ── SOCKET.IO ──────────────────────────────────────────────────────────────
 function initSocket() {
+  if (state.socket) {
+    state.socket.removeAllListeners();
+    state.socket.disconnect();
+  }
   state.socket = io({ transports: ['websocket', 'polling'] });
 
   state.socket.on('connect', () => {
@@ -1945,23 +1949,26 @@ function _sparklineSVG(values, w = 60, h = 20) {
 
 async function cargarPrecios() {
   try {
-    const [preciosRes, histRes] = await Promise.all([
+    const [preciosRes, histRes] = (await Promise.allSettled([
       apiFetch('/api/prices'),
       apiFetch('/api/prices/historico?precio_tipo=CIERRE'),
-    ]);
-    const data = await preciosRes.json();
-    data.precios.forEach(p => { state.preciosCache[p.especie] = p; });
+    ])).map(r => r.status === 'fulfilled' ? r.value : null);
 
-    // Group historico by especie, oldest-first (API returns DESC so reverse)
     const hMap = {};
-    if (histRes.ok) {
-      const hData = await histRes.json();
-      (hData.precios || []).forEach(h => {
-        if (!hMap[h.especie]) hMap[h.especie] = [];
-        hMap[h.especie].unshift(h.precio); // unshift reverses DESC to oldest-first
-      });
+    if (preciosRes?.ok) {
+      const data = await preciosRes.json();
+      data.precios.forEach(p => { state.preciosCache[p.especie] = p; });
+
+      // Group historico by especie, oldest-first (API returns DESC so reverse)
+      if (histRes?.ok) {
+        const hData = await histRes.json();
+        (hData.precios || []).forEach(h => {
+          if (!hMap[h.especie]) hMap[h.especie] = [];
+          hMap[h.especie].unshift(h.precio);
+        });
+      }
+      renderPreciosTable(data.precios, hMap);
     }
-    renderPreciosTable(data.precios, hMap);
   } catch (e) {
     showToast('Error al cargar precios de mercado.', 'error');
     const tbody = document.getElementById('preciosBody');
@@ -2247,16 +2254,16 @@ async function cargarDashboard() {
     '<div style="color:var(--text3);font-size:12px">Cargando...</div>';
 
   try {
-    const [summaryRes, benchRes, pnlRes, tcRes, pnlHistRes] = await Promise.all([
+    const [summaryRes, benchRes, pnlRes, tcRes, pnlHistRes] = (await Promise.allSettled([
       apiFetch('/api/reports/summary'),
       apiFetch('/api/reports/benchmark'),
       apiFetch('/api/pnl/resumen'),
       apiFetch('/api/tipo-cambio/actual'),
       apiFetch(`/api/pnl?fecha_desde=${_isoMinus(13)}&fecha_hasta=${_isoToday()}`),
-    ]);
+    ])).map(r => r.status === 'fulfilled' ? r.value : null);
 
     // Summary (ordenes counts + fills + volume)
-    if (summaryRes.ok) {
+    if (summaryRes?.ok) {
       const s = await summaryRes.json();
       document.getElementById('h-ordenes-pendientes').textContent = fmtInt(s.ordenes_pendientes ?? 0);
       document.getElementById('h-ordenes-error').textContent      = fmtInt(s.ordenes_error ?? 0);
@@ -2264,7 +2271,7 @@ async function cargarDashboard() {
     }
 
     // Benchmark (valor cartera, P&L no realizado)
-    if (benchRes.ok) {
+    if (benchRes?.ok) {
       const b = await benchRes.json();
       document.getElementById('h-valor-cartera').textContent = fmt(b.valor_actual ?? 0);
       const pnlNr = b.portfolio_pnl ?? 0;
@@ -2276,7 +2283,7 @@ async function cargarDashboard() {
     }
 
     // PnL realizado hoy
-    if (pnlRes.ok) {
+    if (pnlRes?.ok) {
       const pnl = await pnlRes.json();
       const pr = pnl.pnl_realizado ?? 0;
       const pnlREl = document.getElementById('h-pnl-realizado');
@@ -2287,14 +2294,14 @@ async function cargarDashboard() {
     }
 
     // Tipo de cambio
-    if (tcRes.ok) {
+    if (tcRes?.ok) {
       const tc = await tcRes.json();
       document.getElementById('h-tc-mep').textContent = tc.mep ? fmt(tc.mep) : '—';
       document.getElementById('h-tc-ccl').textContent = tc.ccl ? fmt(tc.ccl) : '—';
     }
 
     // Sparklines históricos P&L (últimos 14 días)
-    if (pnlHistRes.ok) {
+    if (pnlHistRes?.ok) {
       const { pnl: rows = [] } = await pnlHistRes.json();
       const byDate = {};
       rows.forEach(r => {
@@ -2356,18 +2363,24 @@ function _renderDashboardAlerts(r) {
 
 async function cargarInformes() {
   try {
-    const [summaryRes, snapshotRes, concRes] = await Promise.all([
+    const [summaryRes, snapshotRes, concRes] = (await Promise.allSettled([
       apiFetch('/api/reports/summary'),
       apiFetch('/api/reports/positions-snapshot'),
       apiFetch('/api/reports/concentracion'),
-    ]);
-    const summary = await summaryRes.json();
-    const snapshot = await snapshotRes.json();
-    const conc = await concRes.json();
-    renderKPIs(summary);
-    renderTopEspecies(summary.top_especies);
-    renderSnapshot(snapshot.snapshot);
-    renderConcentracion(conc);
+    ])).map(r => r.status === 'fulfilled' ? r.value : null);
+    if (summaryRes?.ok) {
+      const summary = await summaryRes.json();
+      renderKPIs(summary);
+      renderTopEspecies(summary.top_especies);
+    }
+    if (snapshotRes?.ok) {
+      const snapshot = await snapshotRes.json();
+      renderSnapshot(snapshot.snapshot);
+    }
+    if (concRes?.ok) {
+      const conc = await concRes.json();
+      renderConcentracion(conc);
+    }
   } catch (e) {
     showToast('Error al cargar informes.', 'error');
   }
@@ -2530,17 +2543,17 @@ function exportar(tipo) {
 
 async function cargarUtilitarios() {
   try {
-    const [statsRes, healthRes] = await Promise.all([
+    const [statsRes, healthRes] = (await Promise.allSettled([
       apiFetch('/api/utils/stats'),
       apiFetch('/api/utils/health'),
-    ]);
-    if (statsRes.ok) {
+    ])).map(r => r.status === 'fulfilled' ? r.value : null);
+    if (statsRes?.ok) {
       renderStats(await statsRes.json());
     } else {
       document.getElementById('statsGrid').innerHTML =
         '<div style="color:var(--text3);font-size:12px;padding:8px 0">Sin datos de estadísticas.</div>';
     }
-    if (healthRes.ok) {
+    if (healthRes?.ok) {
       const health = await healthRes.json();
       renderHealth(health.servicios);
     } else {
