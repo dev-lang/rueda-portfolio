@@ -20,8 +20,21 @@ from app.models.usuario_seguido import UsuarioSeguido
 from app.models.precio_mercado import PrecioMercado
 from app.models.posicion import Posicion
 from app.models.especie_mercado import EspecieMercado
+from app.models.operador import Operador
 
 router = APIRouter(prefix="/api/seguidos", tags=["seguidos"])
+
+
+def _cliente_codigos_usuario(db: Session, user: User) -> list[str]:
+    """Return client codes accessible to this user (all for ADMIN, own for OPERADOR)."""
+    if user.role == "ADMIN":
+        return []  # empty = no filter (all)
+    op = db.execute(
+        select(Operador).where(Operador.username == user.username, Operador.activo.is_(True))
+    ).scalar_one_or_none()
+    if op and op.cliente_codigo:
+        return [op.cliente_codigo]
+    return []  # no linked client → no positions
 
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -96,12 +109,12 @@ def get_lista_seguidos(
     ).scalars().all()
     precios_map = {p.especie: p for p in precios}
 
-    # Get positions (aggregated across all accounts for this user)
-    # Note: Posicion model tracks per (cliente, especie), not per usuario
-    # Assuming "cliente" field maps to user in your schema; adjust if needed
-    posiciones = db.execute(
-        select(Posicion).where(Posicion.especie.in_(especies))
-    ).scalars().all()
+    # Get positions filtered to user's accessible clients
+    codigos = _cliente_codigos_usuario(db, user)
+    pos_query = select(Posicion).where(Posicion.especie.in_(especies))
+    if codigos:
+        pos_query = pos_query.where(Posicion.cliente.in_(codigos))
+    posiciones = db.execute(pos_query).scalars().all()
 
     result = []
     for seg in seguidos:

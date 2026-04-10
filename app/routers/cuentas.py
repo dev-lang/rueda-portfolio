@@ -74,12 +74,22 @@ def proyeccion_caja(
     cliente: str = "STD",
     moneda: str = "ARP",
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Real-time cash projection: current balance minus notional of all pending buy orders.
     Used by the intraday cash panel to show committed vs free cash.
     """
+    if current_user.role != "ADMIN":
+        op = db.execute(
+            select(Operador).where(
+                Operador.username == current_user.username,
+                Operador.activo.is_(True),
+            )
+        ).scalar_one_or_none()
+        if not op or op.cliente_codigo != cliente.upper():
+            raise HTTPException(status_code=403, detail="Acceso denegado al cliente solicitado.")
+
     from app.services import proyeccion_service
     return proyeccion_service.calcular_proyeccion(db, cliente_codigo=cliente, moneda=moneda)
 

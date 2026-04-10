@@ -10,6 +10,7 @@ DELETE /api/alertas/{id}         — delete an alert rule
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
@@ -18,6 +19,33 @@ from app.models.alerta_usuario import AlertaUsuario, TIPOS_ALERTA
 from app.models.user import User
 
 router = APIRouter(prefix="/api/alertas", tags=["alertas"])
+
+
+class CrearAlertaRequest(BaseModel):
+    tipo: str
+    umbral: float
+    cliente: str | None = None
+    especie: str | None = None
+    moneda: str = "ARP"
+
+    @field_validator("tipo")
+    @classmethod
+    def tipo_valido(cls, v: str) -> str:
+        if v not in TIPOS_ALERTA:
+            raise ValueError(f"tipo inválido: {v}. Válidos: {sorted(TIPOS_ALERTA)}")
+        return v
+
+    @field_validator("umbral")
+    @classmethod
+    def umbral_positivo(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("umbral debe ser > 0")
+        return v
+
+    @field_validator("especie")
+    @classmethod
+    def especie_upper(cls, v: str | None) -> str | None:
+        return v.upper() if v else None
 
 
 @router.get("")
@@ -36,28 +64,17 @@ def listar_alertas(
 
 @router.post("")
 def crear_alerta(
-    payload: dict,
+    payload: CrearAlertaRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tipo = payload.get("tipo", "")
-    if tipo not in TIPOS_ALERTA:
-        raise HTTPException(400, f"tipo inválido: {tipo}. Válidos: {sorted(TIPOS_ALERTA)}")
-
-    try:
-        umbral = float(payload["umbral"])
-    except (KeyError, ValueError, TypeError):
-        raise HTTPException(400, "umbral debe ser un número")
-    if umbral <= 0:
-        raise HTTPException(400, "umbral debe ser > 0")
-
     alerta = AlertaUsuario(
         username=current_user.username,
-        tipo=tipo,
-        cliente=payload.get("cliente") or None,
-        especie=(payload.get("especie") or "").upper() or None,
-        umbral=umbral,
-        moneda=payload.get("moneda", "ARP"),
+        tipo=payload.tipo,
+        cliente=payload.cliente or None,
+        especie=payload.especie,
+        umbral=payload.umbral,
+        moneda=payload.moneda,
         activo=True,
     )
     db.add(alerta)

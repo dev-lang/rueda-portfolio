@@ -117,26 +117,33 @@ def get_or_create_account(
     mercado: str = "DEFAULT",
     capital_inicial: Decimal = Decimal("0"),
 ) -> Account:
-    account = db.execute(
-        select(Account).where(
-            Account.owner_type == owner_type,
-            Account.owner_id == owner_id,
-            Account.moneda == moneda,
-            Account.mercado == mercado,
-        )
-    ).scalar_one_or_none()
+    from sqlalchemy.exc import IntegrityError
+
+    _where = (
+        Account.owner_type == owner_type,
+        Account.owner_id == owner_id,
+        Account.moneda == moneda,
+        Account.mercado == mercado,
+    )
+
+    account = db.execute(select(Account).where(*_where)).scalar_one_or_none()
 
     if account is None:
-        account = Account(
-            owner_type=owner_type,
-            owner_id=owner_id,
-            moneda=moneda,
-            mercado=mercado,
-            balance_cache=capital_inicial,
-            capital_inicial=capital_inicial,
-        )
-        db.add(account)
-        db.flush()
+        try:
+            account = Account(
+                owner_type=owner_type,
+                owner_id=owner_id,
+                moneda=moneda,
+                mercado=mercado,
+                balance_cache=capital_inicial,
+                capital_inicial=capital_inicial,
+            )
+            db.add(account)
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            account = db.execute(select(Account).where(*_where)).scalar_one()
+
     return account
 
 
