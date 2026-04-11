@@ -64,13 +64,40 @@ function showToast(msg, type = 'ok', title = '', opts = {}) {
 /**
  * Drop-in fetch wrapper that:
  *  - Always sends httpOnly cookies (credentials: 'include')
- *  - Redirects to /login on HTTP 401 (expired/missing token)
+ *  - On HTTP 401, transparently calls /api/auth/refresh once and retries the
+ *    original request before falling back to /login. Concurrent 401s share a
+ *    single in-flight refresh promise so we never fire N parallel refreshes.
  */
+let _refreshInflight = null;
+
+async function _tryRefreshToken() {
+  // Coalesce concurrent refresh attempts onto a single in-flight promise.
+  if (_refreshInflight) return _refreshInflight;
+  _refreshInflight = (async () => {
+    try {
+      const res = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  })();
+  try {
+    return await _refreshInflight;
+  } finally {
+    _refreshInflight = null;
+  }
+}
+
 async function apiFetch(url, opts = {}) {
   const signal = opts.signal ?? state?.navController?.signal;
+  const doFetch = () => fetch(url, { ...opts, credentials: 'include', signal });
+
   let res;
   try {
-    res = await fetch(url, { ...opts, credentials: 'include', signal });
+    res = await doFetch();
   } catch (e) {
     // AbortError fires when the user navigated away mid-request (navController.abort()).
     // The view that issued this fetch is gone, so letting the caller's .catch() run
@@ -80,7 +107,24 @@ async function apiFetch(url, opts = {}) {
     if (e?.name === 'AbortError') return new Promise(() => {});
     throw e;
   }
+
   if (res.status === 401) {
+    // Don't try to refresh the auth endpoints themselves — that causes loops.
+    // /me is allowed to refresh because it's the session check on init.
+    const isAuthMutation = /\/api\/auth\/(login|logout|refresh)\b/.test(url);
+    if (!isAuthMutation) {
+      const refreshed = await _tryRefreshToken();
+      if (refreshed) {
+        // Retry the original request once with the new cookies in place.
+        try {
+          res = await doFetch();
+        } catch (e) {
+          if (e?.name === 'AbortError') return new Promise(() => {});
+          throw e;
+        }
+        if (res.status !== 401) return res;
+      }
+    }
     window.location.href = '/login';
     // Throw so catch blocks in callers run and can clean up the UI
     throw new Error('401 No autenticado — redirigiendo al login');
@@ -1041,17 +1085,17 @@ function renderTabla(ordenes) {
 const _knownOrderIds = new Set();   // tracks IDs already seen to detect new rows
 
 function renderRow(o, isNew = false) {
-  const pct = o.progreso;
+  const pct = Number(o.progreso) || 0;
   const isFull = pct >= 100;
   return `
-    <tr class="${isNew ? 'new-flash' : ''} row-${o.estado_color}" data-id="${o.id}" data-action="ver-detalle">
-      <td><span class="tipo-badge tipo-${o.tipo_orden}">${o.tipo_orden}</span></td>
-      <td><span class="nro-cell">${o.nro_orden}</span></td>
-      <td>${o.fecha_orden}</td>
-      <td>${o.cliente}</td>
-      <td>${o.razon_social}</td>
-      <td><span class="especie-tag">${o.especie}</span></td>
-      <td class="precio-cell">${o.moneda}</td>
+    <tr class="${isNew ? 'new-flash' : ''} row-${esc(o.estado_color)}" data-id="${esc(o.id)}" data-action="ver-detalle">
+      <td><span class="tipo-badge tipo-${esc(o.tipo_orden)}">${esc(o.tipo_orden)}</span></td>
+      <td><span class="nro-cell">${esc(o.nro_orden)}</span></td>
+      <td>${esc(o.fecha_orden)}</td>
+      <td>${esc(o.cliente)}</td>
+      <td>${esc(o.razon_social)}</td>
+      <td><span class="especie-tag">${esc(o.especie)}</span></td>
+      <td class="precio-cell">${esc(o.moneda)}</td>
       <td class="precio-cell">${o.tipo_precio === 'MERCADO' ? '<span style="color:var(--accent);font-size:10px">MKT</span>' : fmt(o.precio_limite)}</td>
       <td>
         <div class="progress-wrap">
@@ -1061,11 +1105,11 @@ function renderRow(o, isNew = false) {
           <div class="progress-pct">${pct}%</div>
         </div>
       </td>
-      <td><span class="ejec-cell">${o.ejecutado_total}</span></td>
+      <td><span class="ejec-cell">${esc(o.ejecutado_total)}</span></td>
       <td class="precio-cell">${o.precio_promedio > 0 ? fmt(o.precio_promedio) : '—'}</td>
       <td>
-        <span class="inst-badge inst-${o.estado_color}">
-          [${o.instancia_codigo}] ${o.instancia}
+        <span class="inst-badge inst-${esc(o.estado_color)}">
+          [${esc(o.instancia_codigo)}] ${esc(o.instancia)}
         </span>
       </td>
     </tr>`;
@@ -1076,17 +1120,17 @@ function updateOrdenEnTabla(orden) {
   const oldRow = tbody.querySelector(`tr[data-id="${orden.id}"]`);
   if (!oldRow) return;
 
-  const pct = orden.progreso;
+  const pct = Number(orden.progreso) || 0;
   const isFull = pct >= 100;
-  oldRow.className = `updated-flash row-${orden.estado_color}`;
+  oldRow.className = `updated-flash row-${esc(orden.estado_color)}`;
   oldRow.innerHTML = `
-    <td><span class="tipo-badge tipo-${orden.tipo_orden}">${orden.tipo_orden}</span></td>
-    <td><span class="nro-cell">${orden.nro_orden}</span></td>
-    <td>${orden.fecha_orden}</td>
-    <td>${orden.cliente}</td>
-    <td>${orden.razon_social}</td>
-    <td><span class="especie-tag">${orden.especie}</span></td>
-    <td class="precio-cell">${orden.moneda}</td>
+    <td><span class="tipo-badge tipo-${esc(orden.tipo_orden)}">${esc(orden.tipo_orden)}</span></td>
+    <td><span class="nro-cell">${esc(orden.nro_orden)}</span></td>
+    <td>${esc(orden.fecha_orden)}</td>
+    <td>${esc(orden.cliente)}</td>
+    <td>${esc(orden.razon_social)}</td>
+    <td><span class="especie-tag">${esc(orden.especie)}</span></td>
+    <td class="precio-cell">${esc(orden.moneda)}</td>
     <td class="precio-cell">${orden.tipo_precio === 'MERCADO' ? '<span style="color:var(--accent);font-size:10px">MKT</span>' : fmt(orden.precio_limite)}</td>
     <td>
       <div class="progress-wrap">
@@ -1096,9 +1140,9 @@ function updateOrdenEnTabla(orden) {
         <div class="progress-pct">${pct}%</div>
       </div>
     </td>
-    <td><span class="ejec-cell">${orden.ejecutado_total}</span></td>
+    <td><span class="ejec-cell">${esc(orden.ejecutado_total)}</span></td>
     <td class="precio-cell">${orden.precio_promedio > 0 ? fmt(orden.precio_promedio) : '—'}</td>
-    <td><span class="inst-badge inst-${orden.estado_color}">[${orden.instancia_codigo}] ${orden.instancia}</span></td>
+    <td><span class="inst-badge inst-${esc(orden.estado_color)}">[${esc(orden.instancia_codigo)}] ${esc(orden.instancia)}</span></td>
   `;
 
   const idx = state.ordenes.findIndex(o => o.id === orden.id);
@@ -3348,74 +3392,107 @@ function _closeSidebarIfMobile() {
 }
 
 // ── INIT ───────────────────────────────────────────────────────────────────
+/**
+ * Fullscreen overlay shown when init() can't bring the app up.
+ * Replaces the silent blank-page failure mode.
+ */
+function _showInitError(msg) {
+  if (document.getElementById('init-error-overlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'init-error-overlay';
+  overlay.style.cssText =
+    'position:fixed;inset:0;background:rgba(0,0,0,0.85);color:#fff;' +
+    'display:flex;align-items:center;justify-content:center;z-index:99999;' +
+    'font-family:system-ui,-apple-system,sans-serif';
+  overlay.innerHTML = `
+    <div style="background:#1a1a1a;border:1px solid #444;border-radius:8px;padding:32px;max-width:480px;text-align:center">
+      <div style="font-size:32px;margin-bottom:16px">⚠</div>
+      <div style="font-size:18px;font-weight:600;margin-bottom:12px">No se pudo iniciar la aplicación</div>
+      <div style="font-size:13px;color:#bbb;margin-bottom:24px">${esc(msg)}</div>
+      <button id="init-error-retry" style="padding:8px 24px;background:#3b82f6;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px">Reintentar</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('init-error-retry')?.addEventListener('click', () => location.reload());
+}
+
 async function init() {
-  // Verify session — redirects to /login on 401 via apiFetch interceptor
-  const meRes = await apiFetch('/api/auth/me');
-  if (!meRes.ok) return; // apiFetch already redirected on 401
-  const me = await meRes.json();
+  try {
+    // Verify session — apiFetch redirects to /login on 401 (and now retries via refresh first)
+    const meRes = await apiFetch('/api/auth/me');
+    if (!meRes.ok) {
+      // apiFetch already handled 401. Anything else is a real backend failure.
+      throw new Error(`No se pudo verificar la sesión (HTTP ${meRes.status}).`);
+    }
+    const me = await meRes.json();
 
-  state.userRole     = me.role;
-  state.clienteCodigo = me.cliente_codigo || null;
+    state.userRole     = me.role;
+    state.clienteCodigo = me.cliente_codigo || null;
 
-  // Show logged-in user in topbar
-  const userEl = document.getElementById('topbar-user');
-  if (userEl) {
-    userEl.textContent = `${me.username} (${me.role})`;
-  }
+    // Show logged-in user in topbar
+    const userEl = document.getElementById('topbar-user');
+    if (userEl) {
+      userEl.textContent = `${me.username} (${me.role})`;
+    }
 
-  // Show Admin nav item only for ADMIN role
-  if (me.role === 'ADMIN') {
-    document.querySelectorAll('.admin-only').forEach(el => {
-      el.style.display = '';
+    // Show Admin nav item only for ADMIN role
+    if (me.role === 'ADMIN') {
+      document.querySelectorAll('.admin-only').forEach(el => {
+        el.style.display = '';
+      });
+    }
+
+    // Sync toggle button label with restored theme
+    const savedTheme = localStorage.getItem('rueda-theme') || 'xp';
+    _applyTheme(savedTheme);
+    initNav();
+    initTableSort();          // instrument all static table headers for sort
+    initFilterPersistence();  // attach change listeners for filter persistence
+    initFilterReloads();      // attach change/input listeners for filter reload triggers
+    initSeguidos();           // attach event listeners for watchlist section
+    _restoreStaticFilters();  // restore inputs + static selects immediately
+    initSocket();
+    await cargarFiltros();
+    _restoreDynamicFilters(); // restore selects whose options were just populated
+    _cargarEspeciesDatalist();
+    _cargarClientes();
+
+    // Restore view: URL hash takes priority, then localStorage, then default home
+    const hashView   = location.hash.slice(1);
+    const savedView  = (hashView && VIEW_LABELS[hashView]) ? hashView : localStorage.getItem('rueda-view');
+    if (savedView && document.getElementById(`view-${savedView}`)) {
+      setView(savedView, { pushHistory: !hashView }); // don't double-push if hash already set
+    } else {
+      history.replaceState({ view: 'home' }, '', '#home');
+      setView('home');
+    }
+    await cargarNotificaciones();
+
+    // Status bar clock — update every second
+    _updateClock();
+    setInterval(_updateClock, 1000);
+
+    // Sidebar: close on nav-item click (mobile) and on resize back to desktop
+    document.querySelectorAll('.nav-item').forEach(el => {
+      el.addEventListener('click', _closeSidebarIfMobile);
     });
-  }
-
-  // Sync toggle button label with restored theme
-  const savedTheme = localStorage.getItem('rueda-theme') || 'xp';
-  _applyTheme(savedTheme);
-  initNav();
-  initTableSort();          // instrument all static table headers for sort
-  initFilterPersistence();  // attach change listeners for filter persistence
-  initFilterReloads();      // attach change/input listeners for filter reload triggers
-  initSeguidos();           // attach event listeners for watchlist section
-  _restoreStaticFilters();  // restore inputs + static selects immediately
-  initSocket();
-  await cargarFiltros();
-  _restoreDynamicFilters(); // restore selects whose options were just populated
-  _cargarEspeciesDatalist();
-  _cargarClientes();
-
-  // Restore view: URL hash takes priority, then localStorage, then default home
-  const hashView   = location.hash.slice(1);
-  const savedView  = (hashView && VIEW_LABELS[hashView]) ? hashView : localStorage.getItem('rueda-view');
-  if (savedView && document.getElementById(`view-${savedView}`)) {
-    setView(savedView, { pushHistory: !hashView }); // don't double-push if hash already set
-  } else {
-    history.replaceState({ view: 'home' }, '', '#home');
-    setView('home');
-  }
-  await cargarNotificaciones();
-
-  // Status bar clock — update every second
-  _updateClock();
-  setInterval(_updateClock, 1000);
-
-  // Sidebar: close on nav-item click (mobile) and on resize back to desktop
-  document.querySelectorAll('.nav-item').forEach(el => {
-    el.addEventListener('click', _closeSidebarIfMobile);
-  });
-  window.addEventListener('resize', () => {
-    if (window.innerWidth > 1024) document.body.classList.remove('sidebar-open');
-  });
-
-  // Load first admin tab when admin nav item is clicked
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.addEventListener('click', () => {
-      if (item.dataset.view === 'admin') switchAdminTab('usuarios');
+    window.addEventListener('resize', () => {
+      if (window.innerWidth > 1024) document.body.classList.remove('sidebar-open');
     });
-  });
 
-  initCollapsiblePanels();
+    // Load first admin tab when admin nav item is clicked
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        if (item.dataset.view === 'admin') switchAdminTab('usuarios');
+      });
+    });
+
+    initCollapsiblePanels();
+  } catch (e) {
+    // 401s already redirected to /login via apiFetch — swallow that error here.
+    if (e?.message?.startsWith('401 No autenticado')) return;
+    _logError('init', e);
+    _showInitError(e?.message || 'Error inesperado al iniciar la aplicación.');
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
