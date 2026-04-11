@@ -392,6 +392,41 @@ function _errorTableRow(colSpan, msg) {
   return `<tr><td colspan="${colSpan}" style="color:var(--red)">Error: ${esc(msg)}</td></tr>`;
 }
 
+// ── PAGINATION HELPER ────────────────────────────────────────────────────
+/**
+ * Calcula el rango de registros visible en una página y genera el texto descriptivo.
+ * @param {number} page    – página actual (1-based)
+ * @param {number} perPage – registros por página
+ * @param {number} total   – total de registros
+ * @param {string} label   – sustantivo plural (ej: 'órdenes', 'registros')
+ * @returns {{ from: number, to: number, text: string }}
+ */
+function _calcularPaginacion(page, perPage, total, label = 'registros') {
+  const from = total === 0 ? 0 : (page - 1) * perPage + 1;
+  const to   = Math.min(page * perPage, total);
+  const text = total > 0 ? `Mostrando ${from}–${to} de ${total} ${label}` : `Sin ${label}`;
+  return { from, to, text };
+}
+
+// ── TAB SWITCH HELPER ─────────────────────────────────────────────────────
+/**
+ * Activa un tab: marca el botón activo y muestra/oculta los paneles de contenido.
+ * @param {string}   tab           – valor del tab activo
+ * @param {string[]} tabs          – array de todos los valores posibles
+ * @param {string}   btnPrefix     – prefijo del id del botón  (btnPrefix + tab)
+ * @param {string}   contentPrefix – prefijo del id del panel  (contentPrefix + tab)
+ * @param {function} [onSwitch]    – callback opcional(tab) ejecutado al final
+ */
+function _switchTab(tab, tabs, btnPrefix, contentPrefix, onSwitch) {
+  tabs.forEach(t => {
+    const btn = document.getElementById(`${btnPrefix}${t}`);
+    const div = document.getElementById(`${contentPrefix}${t}`);
+    if (btn) btn.classList.toggle('active', t === tab);
+    if (div) div.style.display = t === tab ? '' : 'none';
+  });
+  if (onSwitch) onSwitch(tab);
+}
+
 // ── TOGGLE PATCH HELPER ───────────────────────────────────────────────────
 /**
  * Send a PATCH for a toggle (active flag, etc.) and refresh the table afterwards.
@@ -955,6 +990,14 @@ function fmtInt(n) {
   return Number(n).toLocaleString('es-AR');
 }
 
+// ── BADGE HELPERS ──────────────────────────────────────────────────────────
+/** Renderiza un span especie-tag, o un texto en gris si especie es falsy. */
+function _badgeEspecie(especie, fallback = 'Todas') {
+  return especie
+    ? `<span class="especie-tag">${esc(especie)}</span>`
+    : `<span style="color:var(--text3)">${fallback}</span>`;
+}
+
 // ── SKELETON LOADING ────────────────────────────────────────────────────────
 function _showSkeleton(tbodyId, cols, rows = 8) {
   const tbody = document.getElementById(tbodyId);
@@ -1112,9 +1155,12 @@ function renderTabla(ordenes) {
   }
   tbody.innerHTML = ordenes.map(o => {
     const isNew = !_knownOrderIds.has(o.id);
-    if (isNew) _knownOrderIds.add(o.id);
     return renderRow(o, isNew);
   }).join('');
+  // Reemplaza el Set con los IDs del render actual: evita crecimiento
+  // ilimitado y garantiza que el próximo refresh detecte solo filas realmente nuevas.
+  _knownOrderIds.clear();
+  ordenes.forEach(o => _knownOrderIds.add(o.id));
   _reapplySort(document.getElementById('ordersTable'));
 }
 
@@ -1130,7 +1176,7 @@ function renderRow(o, isNew = false) {
       <td>${esc(o.fecha_orden)}</td>
       <td>${esc(o.cliente)}</td>
       <td>${esc(o.razon_social)}</td>
-      <td><span class="especie-tag">${esc(o.especie)}</span></td>
+      <td>${_badgeEspecie(o.especie)}</td>
       <td class="precio-cell">${esc(o.moneda)}</td>
       <td class="precio-cell">${o.tipo_precio === 'MERCADO' ? '<span style="color:var(--accent);font-size:10px">MKT</span>' : fmt(o.precio_limite)}</td>
       <td>
@@ -1165,7 +1211,7 @@ function updateOrdenEnTabla(orden) {
     <td>${esc(orden.fecha_orden)}</td>
     <td>${esc(orden.cliente)}</td>
     <td>${esc(orden.razon_social)}</td>
-    <td><span class="especie-tag">${esc(orden.especie)}</span></td>
+    <td>${_badgeEspecie(orden.especie)}</td>
     <td class="precio-cell">${esc(orden.moneda)}</td>
     <td class="precio-cell">${orden.tipo_precio === 'MERCADO' ? '<span style="color:var(--accent);font-size:10px">MKT</span>' : fmt(orden.precio_limite)}</td>
     <td>
@@ -1189,9 +1235,7 @@ function renderPaginacion(total, page, pages) {
   const info = document.getElementById('paginationInfo');
   const ctrl = document.getElementById('paginationControls');
 
-  const from = total === 0 ? 0 : (page - 1) * state.perPage + 1;
-  const to = Math.min(page * state.perPage, total);
-  info.textContent = `Mostrando ${from}–${to} de ${total} órdenes`;
+  info.textContent = _calcularPaginacion(page, state.perPage, total, 'órdenes').text;
 
   ctrl.innerHTML = _renderPageBtns(page, pages, 'go-page');
   state.currentPage = page;
@@ -2100,7 +2144,7 @@ function renderPreciosTable(precios, hMap = {}) {
     const vwapStr = p.vwap ? fmt(p.vwap) : '<span style="color:var(--text3)">—</span>';
     return `
       <tr data-especie="${esc(p.especie)}">
-        <td><span class="especie-tag">${esc(p.especie)}</span></td>
+        <td>${_badgeEspecie(p.especie)}</td>
         <td class="precio-cell">${fmt(p.precio)}</td>
         <td class="precio-cell">${varStr}</td>
         <td class="vol-dia-cell" style="text-align:right;font-size:11px;font-family:'IBM Plex Mono',monospace">${volStr}</td>
@@ -2180,7 +2224,7 @@ function _posicionRow(p, maxAbsPnl = state.posMaxAbsPnl) {
   return `
     <tr data-posicion-id="${esc(p.id)}">
       <td>${esc(p.cliente)}</td>
-      <td><span class="especie-tag">${esc(p.especie)}</span></td>
+      <td>${_badgeEspecie(p.especie)}</td>
       <td>${esc(p.moneda)}</td>
       <td>${esc(p.mercado)}</td>
       <td class="ejec-cell ${netaClass}">${fmtInt(p.cantidad_neta)}</td>
@@ -2264,7 +2308,7 @@ function renderTransacciones(txs) {
       <td>${esc(t.fecha)}</td>
       <td><span class="nro-cell">${esc(t.nro_orden)}</span></td>
       <td><span class="tipo-badge tipo-${esc(t.tipo_orden)}">${esc(t.tipo_orden)}</span></td>
-      <td><span class="especie-tag">${esc(t.especie)}</span></td>
+      <td>${_badgeEspecie(t.especie)}</td>
       <td>${esc(t.cliente)}</td>
       <td>${esc(t.mercado)}</td>
       <td class="ejec-cell">${fmtInt(t.cantidad)}</td>
@@ -2281,9 +2325,7 @@ function renderTxPaginacion(total, page, pages) {
   const info = document.getElementById('txInfo');
   const ctrl = document.getElementById('txPaginacion');
 
-  const from = (page - 1) * state.txPerPage + 1;
-  const to = Math.min(page * state.txPerPage, total);
-  info.textContent = `Mostrando ${from}–${to} de ${total} ejecuciones`;
+  info.textContent = _calcularPaginacion(page, state.txPerPage, total, 'ejecuciones').text;
 
   ctrl.innerHTML = _renderPageBtns(page, pages, 'go-tx-page');
   state.txPage = page;
@@ -2556,7 +2598,7 @@ function renderConcentracion(data) {
     const alerta = pct > 30 ? '⚠ ' : '';
     return `
       <div class="conc-row">
-        <div class="conc-label">${alerta}<span class="especie-tag">${esc(r.especie)}</span></div>
+        <div class="conc-label">${alerta}${_badgeEspecie(r.especie)}</div>
         <div class="conc-track">
           <div class="conc-bar" style="width:${Math.min(pct, 100)}%;background:${color}"></div>
         </div>
@@ -2612,7 +2654,7 @@ function renderTopEspecies(top) {
   tbody.innerHTML = top.map((t, i) => `
     <tr>
       <td style="color:var(--text3)">${i + 1}</td>
-      <td><span class="especie-tag">${esc(t.especie)}</span></td>
+      <td>${_badgeEspecie(t.especie)}</td>
       <td class="importe-cell">${fmt(t.volumen)}</td>
       <td style="color:var(--text3)">${esc(t.fills)}</td>
     </tr>
@@ -2629,7 +2671,7 @@ function renderSnapshot(snapshot) {
     const netaClass = s.cantidad_neta_total > 0 ? 'neta-pos' : s.cantidad_neta_total < 0 ? 'neta-neg' : 'neta-zero';
     return `
       <tr>
-        <td><span class="especie-tag">${esc(s.especie)}</span></td>
+        <td>${_badgeEspecie(s.especie)}</td>
         <td>${esc(s.moneda)}</td>
         <td class="ejec-cell ${netaClass}">${fmtInt(s.cantidad_neta_total)}</td>
         <td style="color:var(--text3)">${esc(s.clientes_count)}</td>
@@ -4252,7 +4294,7 @@ async function cargarAlertas() {
         <td class="precio-cell">${fmt(a.umbral)}</td>
         <td class="precio-cell">${esc(a.moneda)}</td>
         <td>${a.cliente ? esc(a.cliente) : '<span style="color:var(--text3)">Todos</span>'}</td>
-        <td>${a.especie ? `<span class="especie-tag">${esc(a.especie)}</span>` : '<span style="color:var(--text3)">Todas</span>'}</td>
+        <td>${_badgeEspecie(a.especie)}</td>
         <td>
           <label class="toggle-switch" title="${a.activo ? 'Activa — click para pausar' : 'Pausada — click para activar'}">
             <input type="checkbox" ${a.activo ? 'checked' : ''} onchange="toggleAlerta(${a.id}, this)">
@@ -4348,11 +4390,7 @@ async function cargarAuditoria() {
 
     const totalEl = document.getElementById('auditTotal');
     if (totalEl) {
-      const desde = (_auditPage - 1) * parseInt(perPage) + 1;
-      const hasta = Math.min(_auditPage * parseInt(perPage), data.total);
-      totalEl.textContent = data.total
-        ? `Mostrando ${desde}–${hasta} de ${data.total} registros`
-        : 'Sin registros';
+      totalEl.textContent = _calcularPaginacion(_auditPage, parseInt(perPage), data.total, 'registros').text;
     }
 
     renderAuditPagBar(data.current_page, data.pages);
@@ -5350,11 +5388,8 @@ async function abrirModalPosicionesBot(botId, botNombre) {
 }
 
 function switchCuentaBotTab(tab) {
-  ['resumen', 'movimientos', 'operaciones'].forEach(t => {
-    document.getElementById(`cb-tab-${t}`).style.display      = t === tab ? '' : 'none';
-    document.getElementById(`cbTab-${t}`)?.classList.toggle('active', t === tab);
-  });
-  if (tab === 'movimientos' && !_cbMovCargados) cargarMovimientosBot(1);
+  _switchTab(tab, ['resumen', 'movimientos', 'operaciones'], 'cbTab-', 'cb-tab-',
+    t => { if (t === 'movimientos' && !_cbMovCargados) cargarMovimientosBot(1); });
 }
 
 async function abrirModalCuentaBot(botId, botNombre) {
@@ -5675,13 +5710,8 @@ function instActualizarSubtabs() {
 }
 
 function switchInstTab(tab) {
-  ['base','rf','futuro','margen'].forEach(t => {
-    const btn = document.getElementById(`instSubTab-${t}`);
-    const div = document.getElementById(`instTab-${t}`);
-    if (btn) btn.classList.toggle('active', t === tab);
-    if (div) div.style.display = t === tab ? '' : 'none';
-  });
-  if (tab === 'margen' && _instCurrentId) cargarLlamados(_instCurrentId);
+  _switchTab(tab, ['base','rf','futuro','margen'], 'instSubTab-', 'instTab-',
+    t => { if (t === 'margen' && _instCurrentId) cargarLlamados(_instCurrentId); });
 }
 
 function abrirModalInstrumento(inst = null) {
@@ -6539,7 +6569,7 @@ function renderBlotter(ordenes) {
       <td style="font-size:11px;color:var(--text2)">${esc(o.usuario || 'sistema')}</td>
       <td>${deskLabel}</td>
       <td style="font-size:11px">${esc(o.cliente)}</td>
-      <td><span class="especie-tag">${esc(o.especie)}</span></td>
+      <td>${_badgeEspecie(o.especie)}</td>
       <td class="precio-cell">${esc(o.moneda)}</td>
       <td class="precio-cell">${precioStr}</td>
       <td style="font-size:10px">${esc(o.time_in_force)}${tifBadge}</td>
@@ -6590,7 +6620,7 @@ async function cargarProyeccion() {
             <thead><tr><th>Nro. Orden</th><th>Especie</th><th>Tipo Precio</th><th>Precio Ref.</th><th>Cant. Pend.</th><th>Importe</th></tr></thead>
             <tbody>${d.ordenes_pendientes.map(o => `<tr>
               <td>${esc(o.nro_orden)}</td>
-              <td><span class="especie-tag">${esc(o.especie)}</span></td>
+              <td>${_badgeEspecie(o.especie)}</td>
               <td>${esc(o.tipo_precio)}</td>
               <td class="precio-cell">${fmtARS(o.precio_ref)}</td>
               <td class="ejec-cell">${Number(o.qty_pendiente).toLocaleString('es-AR')}</td>
@@ -6640,7 +6670,7 @@ async function cargarMetricasRiesgo() {
           <th>Duration</th><th>DV01</th><th>VaR 95% 1D</th><th>sigma d.</th><th>Dias hist.</th>
         </tr></thead>
         <tbody>${d.posiciones.map(p => `<tr>
-          <td><span class="especie-tag">${esc(p.especie)}</span></td>
+          <td>${_badgeEspecie(p.especie)}</td>
           <td class="ejec-cell">${Number(p.cantidad_neta).toLocaleString('es-AR')}</td>
           <td class="precio-cell">${fmtARS(p.precio_mercado)}</td>
           <td class="precio-cell">${fmtARS(p.valor_arp)}</td>
@@ -6823,7 +6853,7 @@ async function cargarPreciosHistorico() {
     };
     tbody.innerHTML = rows.map(r => `<tr>
       <td style="font-size:11px">${esc(r.fecha)}</td>
-      <td><span class="especie-tag">${esc(r.especie)}</span></td>
+      <td>${_badgeEspecie(r.especie)}</td>
       <td class="precio-cell">${fmtP6(r.precio)}</td>
       <td>${tipoBadge(r.precio_tipo)}</td>
       <td style="font-size:11px;color:var(--text3)">${esc(r.fuente)}</td>
