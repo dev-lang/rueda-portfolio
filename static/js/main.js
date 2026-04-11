@@ -68,7 +68,18 @@ function showToast(msg, type = 'ok', title = '', opts = {}) {
  */
 async function apiFetch(url, opts = {}) {
   const signal = opts.signal ?? state?.navController?.signal;
-  const res = await fetch(url, { ...opts, credentials: 'include', signal });
+  let res;
+  try {
+    res = await fetch(url, { ...opts, credentials: 'include', signal });
+  } catch (e) {
+    // AbortError fires when the user navigated away mid-request (navController.abort()).
+    // The view that issued this fetch is gone, so letting the caller's .catch() run
+    // would write "Error: signal is aborted..." into the stale DOM of the hidden view.
+    // Instead we return a never-resolving promise: the caller hangs harmlessly and
+    // its closures are released when the view is re-rendered on re-entry.
+    if (e?.name === 'AbortError') return new Promise(() => {});
+    throw e;
+  }
   if (res.status === 401) {
     window.location.href = '/login';
     // Throw so catch blocks in callers run and can clean up the UI
@@ -76,6 +87,9 @@ async function apiFetch(url, opts = {}) {
   }
   return res;
 }
+
+// Helper: true if an error came from a fetch aborted by navigation (defense in depth).
+function _isAbort(e) { return e?.name === 'AbortError'; }
 
 async function logout() {
   // Detach all socket listeners before redirecting to prevent listener duplication
@@ -119,6 +133,8 @@ function debounce(fn, ms = 300) {
  * Add ?debug=1 to the URL to see stack traces in the browser console.
  */
 function _logError(context, err) {
+  // Aborts from navController.abort() are expected control flow, not errors.
+  if (_isAbort(err)) return;
   const isDebug = new URLSearchParams(window.location.search).has('debug');
   if (isDebug) {
     console.error(`[${context}]`, err);

@@ -185,6 +185,11 @@ def run_migrations(engine: Engine) -> None:
         "CREATE INDEX IF NOT EXISTS idx_account_entries_account_id ON account_entries(account_id)",
         # Price history queries by especie + date
         "CREATE INDEX IF NOT EXISTS idx_precios_hist_especie ON precios_historico(especie, fecha DESC)",
+        # Settlement job: find fills pending liquidation up to a given date.
+        # liquidada first (highly selective — only a small % is unsettled).
+        "CREATE INDEX IF NOT EXISTS idx_ejecuciones_liquidacion ON ejecuciones(liquidada, fecha_liquidacion)",
+        # Account entries settlement counterpart (same query shape)
+        "CREATE INDEX IF NOT EXISTS idx_account_entries_liquidacion ON account_entries(liquidada, fecha_liquidacion)",
     ]
 
     with engine.connect() as conn:

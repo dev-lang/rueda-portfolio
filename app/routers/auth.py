@@ -124,7 +124,9 @@ def logout(
 
 
 @router.post("/refresh", response_model=TokenResponse)
+@limiter.limit("10/minute")
 def refresh(
+    request: Request,
     response: Response,
     refresh_token: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
