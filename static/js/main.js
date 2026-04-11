@@ -327,6 +327,23 @@ function _showResultOk(el, msg) {
 function _setTbodyLoading(tbody, colSpan = 6) {
   if (tbody) tbody.innerHTML = `<tr><td colspan="${colSpan}" class="text-muted">Cargando...</td></tr>`;
 }
+/**
+ * Standard table-load wrapper: guards the element, shows loading, calls fn(tbody),
+ * and catches any thrown error, rendering it as an error row automatically.
+ * @param {string}   tbodyId – ID of the <tbody> element
+ * @param {number}   cols    – colspan for the error row
+ * @param {function} fn      – async (tbody: HTMLElement) => void
+ */
+async function _cargarTabla(tbodyId, cols, fn) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  _setTbodyLoading(tbody, cols);
+  try {
+    await fn(tbody);
+  } catch(e) {
+    tbody.innerHTML = _errorTableRow(cols, e.message);
+  }
+}
 
 // ── LOADING MESSAGE HELPER ────────────────────────────────────────────────
 /** Show a spinner + message inside a result element during an async action. */
@@ -930,9 +947,11 @@ function _limpiarFiltrosTx() {
 
 // ── FORMATO ────────────────────────────────────────────────────────────────
 function fmt(n) {
+  if (n == null) return '—';
   return Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function fmtInt(n) {
+  if (n == null) return '—';
   return Number(n).toLocaleString('es-AR');
 }
 
@@ -4107,30 +4126,22 @@ async function cargarFirma(page = 1) {
 }
 
 async function cargarPosicionesFirma() {
-  const tbody = document.getElementById('firmaPosBody');
-  if (!tbody) return;
-  _setTbodyLoading(tbody, 7);
-  try {
+  await _cargarTabla('firmaPosBody', 7, async (tbody) => {
     const res = await apiFetch('/api/firma/posiciones');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    if (!data.posiciones?.length) {
-      tbody.innerHTML = _emptyTableRow(7, 'Sin posiciones.');
-      return;
-    }
-    const fmt = v => v == null ? '—' : parseFloat(v).toLocaleString('es-AR', { minimumFractionDigits: 4 });
+    if (!data.posiciones?.length) { tbody.innerHTML = _emptyTableRow(7, 'Sin posiciones.'); return; }
+    const fmtP4 = v => v == null ? '—' : parseFloat(v).toLocaleString('es-AR', { minimumFractionDigits: 4 });
     tbody.innerHTML = data.posiciones.map(p => `<tr>
       <td><strong>${p.especie}</strong></td>
       <td>${p.mercado || '—'}</td>
       <td style="text-align:right">${(p.cantidad_comprada||0).toLocaleString('es-AR')}</td>
       <td style="text-align:right">${(p.cantidad_vendida||0).toLocaleString('es-AR')}</td>
       <td style="text-align:right;font-weight:700;color:${(p.cantidad_neta||0)>=0?'var(--buy,#4caf50)':'var(--sell,#e05c5c)'}">${(p.cantidad_neta||0).toLocaleString('es-AR')}</td>
-      <td style="text-align:right">${fmt(p.costo_promedio_compra)}</td>
+      <td style="text-align:right">${fmtP4(p.costo_promedio_compra)}</td>
       <td style="text-align:right">${(p.cantidad_pendiente_liquidacion||0).toLocaleString('es-AR')}</td>
     </tr>`).join('');
-  } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-muted">Error al cargar: ${esc(e.message)}</td></tr>`;
-  }
+  });
 }
 
 // ── Cuentas Operadores ────────────────────────────────────────────────────────
@@ -4138,18 +4149,11 @@ async function cargarPosicionesFirma() {
 let _opMovActual = null;  // operador id cuya detail está visible
 
 async function cargarCuentasOperadores() {
-  const tbody = document.getElementById('cuentasOpBody');
-  if (!tbody) return;
-  _setTbodyLoading(tbody, 6);
-  try {
+  await _cargarTabla('cuentasOpBody', 6, async (tbody) => {
     const res = await apiFetch('/api/cuentas/operadores');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    if (!data.operadores?.length) {
-      tbody.innerHTML = _emptyTableRow(6, 'No hay operadores registrados.');
-      return;
-    }
-    const fmt = v => v == null ? '—' : parseFloat(v).toLocaleString('es-AR', { minimumFractionDigits: 2 });
+    if (!data.operadores?.length) { tbody.innerHTML = _emptyTableRow(6, 'No hay operadores registrados.'); return; }
     tbody.innerHTML = data.operadores.map(row => {
       const op      = row.operador;
       const cuenta  = row.cuenta;
@@ -4169,9 +4173,7 @@ async function cargarCuentasOperadores() {
         </td>
       </tr>`;
     }).join('');
-  } catch(e) {
-    document.getElementById('cuentasOpBody').innerHTML = `<tr><td colspan="6" class="text-muted">Error: ${esc(e.message)}</td></tr>`;
-  }
+  });
 }
 
 async function verMovimientosOp(opId, nombre, page = 1) {
@@ -4545,16 +4547,10 @@ function initCollapsiblePanels() {
 
 // ── USUARIOS ─────────────────────────────────────────────────────────────────
 async function cargarUsuarios() {
-  const tbody = document.getElementById('usuariosBody');
-  if (!tbody) return;
-  _setTbodyLoading(tbody, 8);
-  try {
+  await _cargarTabla('usuariosBody', 8, async (tbody) => {
     const res  = await apiFetch('/api/users');
     const data = await res.json();
-    if (!data.length) {
-      tbody.innerHTML = _emptyTableRow(8, 'Sin usuarios');
-      return;
-    }
+    if (!data.length) { tbody.innerHTML = _emptyTableRow(8, 'Sin usuarios'); return; }
     _usuarioDataMap = _buildDataMap(data);
     tbody.innerHTML = data.map(u => `
       <tr>
@@ -4575,9 +4571,7 @@ async function cargarUsuarios() {
         </td>
       </tr>
     `).join('');
-  } catch(e) {
-    tbody.innerHTML = _errorTableRow(8, e.message);
-  }
+  });
 }
 
 function abrirModalUsuario(usuario = null) {
@@ -4670,16 +4664,10 @@ async function toggleUsuarioActivo(userId, activo) {
 
 // ── CLIENTES ──────────────────────────────────────────────────────────────────
 async function cargarClientesAdmin() {
-  const tbody = document.getElementById('clientesAdminBody');
-  if (!tbody) return;
-  _setTbodyLoading(tbody, 7);
-  try {
+  await _cargarTabla('clientesAdminBody', 7, async (tbody) => {
     const res  = await apiFetch('/api/clientes');
     const data = await res.json();
-    if (!data.length) {
-      tbody.innerHTML = _emptyTableRow(7, 'Sin clientes');
-      return;
-    }
+    if (!data.length) { tbody.innerHTML = _emptyTableRow(7, 'Sin clientes'); return; }
     _clienteDataMap = _buildDataMap(data, 'codigo');
     tbody.innerHTML = data.map(c => `
       <tr>
@@ -4699,9 +4687,7 @@ async function cargarClientesAdmin() {
         </td>
       </tr>
     `).join('');
-  } catch(e) {
-    tbody.innerHTML = _errorTableRow(7, e.message);
-  }
+  });
 }
 
 function abrirModalCliente(cliente = null) {
@@ -4790,18 +4776,12 @@ async function toggleClienteActivo(codigo, activo) {
 
 // ── TICKERS ───────────────────────────────────────────────────────────────────
 async function cargarTickersAdmin() {
-  const tbody = document.getElementById('tickersAdminBody');
-  if (!tbody) return;
-  const panel = document.getElementById('tickerPanelFiltro')?.value || '';
-  _setTbodyLoading(tbody, 6);
-  try {
+  await _cargarTabla('tickersAdminBody', 6, async (tbody) => {
+    const panel = document.getElementById('tickerPanelFiltro')?.value || '';
     const res  = await apiFetch('/api/admin/tickers');
     let data   = await res.json();
     if (panel) data = data.filter(t => t.panel === panel);
-    if (!data.length) {
-      tbody.innerHTML = _emptyTableRow(6, 'Sin tickers');
-      return;
-    }
+    if (!data.length) { tbody.innerHTML = _emptyTableRow(6, 'Sin tickers'); return; }
     _tickerDataMap = _buildDataMap(data, 'especie');
     const fmtN = v => v != null ? v.toLocaleString('es-AR') : '—';
     tbody.innerHTML = data.map(t => `
@@ -4823,9 +4803,7 @@ async function cargarTickersAdmin() {
         </td>
       </tr>
     `).join('');
-  } catch(e) {
-    tbody.innerHTML = _errorTableRow(6, e.message);
-  }
+  });
 }
 
 function abrirModalTicker(ticker = null) {
@@ -4951,19 +4929,13 @@ async function setBulkHorario(respetar) {
 }
 
 async function cargarBots() {
-  const tbody = document.getElementById('botsBody');
-  if (!tbody) return;
-  _setTbodyLoading(tbody, 9);
-  try {
+  await _cargarTabla('botsBody', 9, async (tbody) => {
     const res  = await apiFetch('/api/admin/bots');
     const data = await res.json();
     // Sync global toggle: checked when ALL bots respect schedule
     const sw = document.getElementById('switch-horario-global');
     if (sw) sw.checked = data.length > 0 && data.every(b => b.respetar_horario !== false);
-    if (!data.length) {
-      tbody.innerHTML = _emptyTableRow(9, 'Sin instancias. Creá una con "+ Nueva instancia".');
-      return;
-    }
+    if (!data.length) { tbody.innerHTML = _emptyTableRow(9, 'Sin instancias. Creá una con "+ Nueva instancia".'); return; }
     _botDataMap = _buildDataMap(data);
     const _perfilColor = { CONSERVADOR: '#4a9eff', MODERADO: '#f0a500', AGRESIVO: '#e05252', TRADER: '#00d4aa' };
     tbody.innerHTML = data.map(b => {
@@ -4996,9 +4968,7 @@ async function cargarBots() {
         </td>
       </tr>
     `}).join('');
-  } catch(e) {
-    tbody.innerHTML = _errorTableRow(7, e.message);
-  }
+  });
 }
 
 const _TODOS_TIPOS = ['LIMC', 'LIMV'];
@@ -5296,14 +5266,11 @@ let _cbPage             = 1;
 let _cbTotalPages       = 1;
 let _cbMovCargados      = false; // lazy-load flag
 
-const _fmtARS = v =>
-  v == null ? '—' : Number(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
 const _fmtARSCompact = v => {
   const n = Number(v || 0);
-  if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'M';
-  if (Math.abs(n) >= 1_000)     return (n / 1_000).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'K';
-  return _fmtARS(v);
+  if (Math.abs(n) >= 1_000_000) return fmt(n / 1_000_000) + 'M';
+  if (Math.abs(n) >= 1_000)     return fmt(n / 1_000) + 'K';
+  return fmt(v);
 };
 
 function cerrarModalCuentaBot(event) {
@@ -5522,8 +5489,8 @@ async function cargarMovimientosBot(page) {
         <td style="font-family:'IBM Plex Mono',monospace;font-size:11px;white-space:nowrap">${esc(fecha)}</td>
         <td><span style="font-size:10px;font-weight:600;color:${tipoClr}">${esc(e.tipo)}</span></td>
         <td style="font-size:10px;color:${isCredit ? 'var(--green)' : 'var(--red)'}">${esc(e.sentido)}</td>
-        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;color:${montoClr}">${montoSign}$${_fmtARS(e.monto)}</td>
-        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">$${_fmtARS(e.balance_post)}</td>
+        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;color:${montoClr}">${montoSign}$${fmt(e.monto)}</td>
+        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">$${fmt(e.balance_post)}</td>
         <td style="font-size:10px;color:var(--text3);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(e.descripcion||'')}">${esc(e.descripcion || '—')}</td>
       </tr>`;
     }).join('');
@@ -5566,7 +5533,7 @@ async function ejecutarAjusteBot() {
       return;
     }
     resEl.style.color = 'var(--green)';
-    resEl.textContent = `Ajuste registrado. Saldo post: $${_fmtARS(data.balance_post)}`;
+    resEl.textContent = `Ajuste registrado. Saldo post: $${fmt(data.balance_post)}`;
     document.getElementById('cb-monto').value       = '';
     document.getElementById('cb-descripcion').value = '';
     // Reload resumen with updated balance
@@ -5639,8 +5606,8 @@ async function _reconciliarBotExec(resEl) {
     const drift = data.drift || 0;
     el.style.color = Math.abs(drift) > 0.01 ? 'var(--red)' : 'var(--green)';
     el.textContent =
-      `Reconciliado. Balance nuevo: $${_fmtARS(data.balance_nuevo)} ` +
-      `(antes: $${_fmtARS(data.balance_antes)}, drift: ${drift >= 0 ? '+' : ''}$${_fmtARS(drift)})`;
+      `Reconciliado. Balance nuevo: $${fmt(data.balance_nuevo)} ` +
+      `(antes: $${fmt(data.balance_antes)}, drift: ${drift >= 0 ? '+' : ''}$${fmt(drift)})`;
     _cbMovCargados = false;
     await cargarRendimientoBot(_cbBotId);
   } catch(e) {
@@ -5661,12 +5628,9 @@ function parseFloatOrNull(s) {
 }
 
 async function cargarInstrumentos() {
-  const tbody = document.getElementById('instrumentosBody');
-  if (!tbody) return;
-  const tipo        = document.getElementById('instTipoFiltro')?.value || '';
-  const soloActivos = document.getElementById('instSoloActivos')?.checked !== false;
-  _setTbodyLoading(tbody, 7);
-  try {
+  await _cargarTabla('instrumentosBody', 7, async (tbody) => {
+    const tipo        = document.getElementById('instTipoFiltro')?.value || '';
+    const soloActivos = document.getElementById('instSoloActivos')?.checked !== false;
     let url = '/api/instrumentos?';
     if (tipo) url += `tipo=${encodeURIComponent(tipo)}&`;
     url += `solo_activos=${soloActivos}`;
@@ -5695,9 +5659,7 @@ async function cargarInstrumentos() {
         <td><button class="btn-mini" onclick="abrirModalInstrumento(${i.id})">Editar</button></td>
       </tr>
     `).join('');
-  } catch(e) {
-    tbody.innerHTML = _errorTableRow(7, e.message);
-  }
+  });
 }
 
 function instActualizarSubtabs() {
@@ -5871,10 +5833,7 @@ async function guardarDetalleFuturo(btn) {
 // ── Llamados a Margen ────────────────────────────────────────────────────────
 
 async function cargarLlamados(instId) {
-  const tbody = document.getElementById('llamadosBody');
-  if (!tbody) return;
-  _setTbodyLoading(tbody, 5);
-  try {
+  await _cargarTabla('llamadosBody', 5, async (tbody) => {
     const res   = await apiFetch(`/api/instrumentos/${instId}/llamados-margen`);
     const data  = await res.json();
     const items = data.llamados_margen || [];
@@ -5884,14 +5843,12 @@ async function cargarLlamados(instId) {
       <tr>
         <td style="font-size:11px">${esc(ll.fecha)}</td>
         <td style="font-size:11px">${esc(ll.cuenta_id)}</td>
-        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">$${_fmtARS(ll.monto)}</td>
+        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">$${fmt(ll.monto)}</td>
         <td><span style="font-size:10px;font-weight:600;color:${estadoColor[ll.estado]||'var(--text2)'}">${esc(ll.estado)}</span></td>
         <td>${ll.estado==='PENDIENTE'?`<button class="btn-mini" onclick="integrarLlamado(${ll.id})">Integrar</button>`:''}</td>
       </tr>
     `).join('');
-  } catch(e) {
-    tbody.innerHTML = _errorTableRow(5, e.message);
-  }
+  });
 }
 
 function abrirModalLlamado() {
@@ -5949,18 +5906,15 @@ const _fmtPnl = v => {
   const n = Number(v);
   const c = n >= 0 ? 'var(--green)' : 'var(--red)';
   const s = n >= 0 ? '+' : '';
-  return `<span style="color:${c};font-family:'IBM Plex Mono',monospace;font-size:11px">${s}$${_fmtARS(v)}</span>`;
+  return `<span style="color:${c};font-family:'IBM Plex Mono',monospace;font-size:11px">${s}$${fmt(v)}</span>`;
 };
 
 async function cargarPnl() {
-  const tbody = document.getElementById('pnlBody');
-  if (!tbody) return;
-  const desde   = document.getElementById('pnlFechaDesde')?.value || '';
-  const hasta   = document.getElementById('pnlFechaHasta')?.value || '';
-  const cliente = document.getElementById('pnlCliente')?.value.trim() || '';
-  const especie = document.getElementById('pnlEspecie')?.value.trim() || '';
-  _setTbodyLoading(tbody, 9);
-  try {
+  await _cargarTabla('pnlBody', 9, async (tbody) => {
+    const desde   = document.getElementById('pnlFechaDesde')?.value || '';
+    const hasta   = document.getElementById('pnlFechaHasta')?.value || '';
+    const cliente = document.getElementById('pnlCliente')?.value.trim() || '';
+    const especie = document.getElementById('pnlEspecie')?.value.trim() || '';
     let url = '/api/pnl?';
     if (desde)   url += `fecha_desde=${desde}&`;
     if (hasta)   url += `fecha_hasta=${hasta}&`;
@@ -5979,14 +5933,12 @@ async function cargarPnl() {
         <td style="text-align:right">${_fmtPnl(r.pnl_realizado)}</td>
         <td style="text-align:right">${_fmtPnl(r.pnl_no_realizado)}</td>
         <td style="text-align:right">${_fmtPnl(r.pnl_total)}</td>
-        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">${r.volumen_comprado!=null?_fmtARS(r.volumen_comprado):'—'}</td>
-        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">${r.volumen_vendido !=null?_fmtARS(r.volumen_vendido) :'—'}</td>
+        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">${r.volumen_comprado!=null?fmt(r.volumen_comprado):'—'}</td>
+        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">${r.volumen_vendido !=null?fmt(r.volumen_vendido) :'—'}</td>
       </tr>
     `).join('');
     if (hasta) cargarResumenPnl(hasta);
-  } catch(e) {
-    tbody.innerHTML = _errorTableRow(9, e.message);
-  }
+  });
 }
 
 async function cargarResumenPnl(fecha) {
@@ -6055,8 +6007,8 @@ async function cargarTcActual() {
       return `
         <div style="background:var(--bg4);border:1px solid var(--border);border-radius:4px;padding:12px;text-align:center">
           <div style="font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:.5px">${label}</div>
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;color:var(--text1)">$${venta!=null?_fmtARS(venta):'—'}</div>
-          ${compra ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">Compra: $${_fmtARS(compra)}</div>` : ''}
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;color:var(--text1)">$${venta!=null?fmt(venta):'—'}</div>
+          ${compra ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">Compra: $${fmt(compra)}</div>` : ''}
         </div>`;
     }).filter(Boolean).join('');
     if (!el.innerHTML) el.innerHTML = '<div style="color:var(--text3);font-size:11px">Sin datos de tipo de cambio disponibles.</div>';
@@ -6066,13 +6018,10 @@ async function cargarTcActual() {
 }
 
 async function cargarTcHistorico() {
-  const tbody = document.getElementById('tcHistoricoBody');
-  if (!tbody) return;
-  const tipo  = document.getElementById('tcTipoFiltro')?.value  || '';
-  const desde = document.getElementById('tcFechaDesde')?.value  || '';
-  const hasta = document.getElementById('tcFechaHasta')?.value  || '';
-  _setTbodyLoading(tbody, 5);
-  try {
+  await _cargarTabla('tcHistoricoBody', 5, async (tbody) => {
+    const tipo  = document.getElementById('tcTipoFiltro')?.value  || '';
+    const desde = document.getElementById('tcFechaDesde')?.value  || '';
+    const hasta = document.getElementById('tcFechaHasta')?.value  || '';
     let url = '/api/tipo-cambio/historico?';
     if (tipo)  url += `tipo=${tipo}&`;
     if (desde) url += `fecha_desde=${desde}&`;
@@ -6085,14 +6034,12 @@ async function cargarTcHistorico() {
       <tr>
         <td style="font-family:'IBM Plex Mono',monospace;font-size:11px">${esc(r.fecha)}</td>
         <td><span class="badge-tipo" style="font-size:10px">${esc(r.tipo)}</span></td>
-        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">${r.valor_compra!=null?'$'+_fmtARS(r.valor_compra):'—'}</td>
-        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">${r.valor_venta !=null?'$'+_fmtARS(r.valor_venta) :'—'}</td>
+        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">${r.valor_compra!=null?'$'+fmt(r.valor_compra):'—'}</td>
+        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">${r.valor_venta !=null?'$'+fmt(r.valor_venta) :'—'}</td>
         <td style="font-size:11px;color:var(--text3)">${esc(r.fuente||'—')}</td>
       </tr>
     `).join('');
-  } catch(e) {
-    tbody.innerHTML = _errorTableRow(5, e.message);
-  }
+  });
 }
 
 async function guardarTcHoy() {
@@ -6192,10 +6139,7 @@ async function descargarReporte(tipo, fecha, umbral = null) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function cargarContrapartes() {
-  const tbody = document.getElementById('contrapartesBody');
-  if (!tbody) return;
-  _setTbodyLoading(tbody, 5);
-  try {
+  await _cargarTabla('contrapartesBody', 5, async (tbody) => {
     const res   = await apiFetch('/api/contrapartes');
     const data  = await res.json();
     const items = data.contrapartes || [];
@@ -6215,9 +6159,7 @@ async function cargarContrapartes() {
         <td><button class="btn-mini" onclick="abrirModalContraparte(${c.id})">Editar</button></td>
       </tr>
     `).join('');
-  } catch(e) {
-    tbody.innerHTML = _errorTableRow(5, e.message);
-  }
+  });
 }
 
 function abrirModalContraparte(cp = null) {
@@ -6287,10 +6229,7 @@ async function toggleContraparteActivo(id, activo) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function cargarLimites() {
-  const tbody = document.getElementById('limitesBody');
-  if (!tbody) return;
-  _setTbodyLoading(tbody, 8);
-  try {
+  await _cargarTabla('limitesBody', 8, async (tbody) => {
     const res   = await apiFetch('/api/riesgo/limites');
     const data  = await res.json();
     const items = data.limites || [];
@@ -6302,7 +6241,7 @@ async function cargarLimites() {
         <td style="font-size:11px;font-weight:600">${esc(l.tipo_limite)}</td>
         <td style="font-family:'IBM Plex Mono',monospace;font-size:11px">${esc(l.especie||'—')}</td>
         <td style="font-size:11px">${esc(l.moneda||'—')}</td>
-        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">$${_fmtARS(l.valor_limite)}</td>
+        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">$${fmt(l.valor_limite)}</td>
         <td style="text-align:right;font-size:11px">${l.alerta_pct!=null?l.alerta_pct+'%':'—'}</td>
         <td>
           <label class="toggle-switch">
@@ -6313,9 +6252,7 @@ async function cargarLimites() {
         <td><button class="btn-mini" onclick="abrirModalLimiteRiesgo(${l.id})">Editar</button></td>
       </tr>
     `).join('');
-  } catch(e) {
-    tbody.innerHTML = _errorTableRow(8, e.message);
-  }
+  });
 }
 
 function abrirModalLimiteRiesgo(lim = null) {
@@ -6415,7 +6352,7 @@ async function cargarLiquidaciones(page = 1) {
         <td><span class="badge-tipo" style="font-family:'IBM Plex Mono',monospace;font-size:11px">${esc(r.especie||'—')}</span></td>
         <td style="font-size:11px">${esc(r.cliente||r.razon_social||'—')}</td>
         <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">${r.cantidad!=null?r.cantidad:'—'}</td>
-        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">${r.precio!=null?'$'+_fmtARS(r.precio):'—'}</td>
+        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px">${r.precio!=null?'$'+fmt(r.precio):'—'}</td>
         <td style="font-family:'IBM Plex Mono',monospace;font-size:11px">${esc(r.fecha_liquidacion||'—')}</td>
         <td style="font-size:11px;color:var(--text3)">${esc(r.mercado||'—')}</td>
         <td><span style="font-size:10px;font-weight:600;color:#f0a500">${esc(r.estado||'PENDIENTE')}</span></td>
@@ -6726,18 +6663,12 @@ async function cargarMetricasRiesgo() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function cargarOperadores() {
-  const tbody = document.getElementById('operadoresBody');
-  if (!tbody) return;
-  _setTbodyLoading(tbody, 6);
-  try {
+  await _cargarTabla('operadoresBody', 7, async (tbody) => {
     const res = await apiFetch('/api/operadores');
-    if (!res.ok) return;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = await res.json();
     const ops = d.operadores || [];
-    if (!ops.length) {
-      tbody.innerHTML = _emptyTableRow(7, 'Sin operadores registrados.');
-      return;
-    }
+    if (!ops.length) { tbody.innerHTML = _emptyTableRow(7, 'Sin operadores registrados.'); return; }
     tbody.innerHTML = ops.map(o => `<tr data-op-id="${o.id}" data-op-nombre="${esc(o.nombre)}" data-op-desk="${esc(o.desk)}" data-op-cliente="${esc(o.cliente_codigo || '')}">
       <td style="font-size:11px;color:var(--text3)">${o.id}</td>
       <td>${esc(o.nombre)}</td>
@@ -6747,7 +6678,7 @@ async function cargarOperadores() {
       <td><span style="color:${o.activo ? 'var(--green)' : 'var(--red)'};font-size:11px">${o.activo ? 'Activo' : 'Inactivo'}</span></td>
       <td><button class="btn-mini" onclick="abrirModalOperador(${o.id})">Editar</button></td>
     </tr>`).join('');
-  } catch (e) { tbody.innerHTML = _emptyTableRow(6, 'Error al cargar.'); }
+  });
 }
 
 let _editOpData = null;
@@ -6842,34 +6773,26 @@ async function guardarOperador(btn) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function cargarPnlPorDesk() {
-  const fechaEl = document.getElementById('pnlDeskFecha');
-  const tbody   = document.getElementById('pnlDeskBody');
-  if (!tbody) return;
-  const fecha = fechaEl?.value || new Date().toISOString().slice(0, 10);
-  _setTbodyLoading(tbody, 7);
-  try {
+  await _cargarTabla('pnlDeskBody', 7, async (tbody) => {
+    const fecha = document.getElementById('pnlDeskFecha')?.value || new Date().toISOString().slice(0, 10);
     const res = await apiFetch(`/api/pnl/por-desk?fecha=${fecha}`);
-    if (!res.ok) return;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = await res.json();
     const desks = d.desks || [];
-    if (!desks.length) {
-      tbody.innerHTML = `<tr><td colspan="7" class="text-muted">Sin datos P&L para ${esc(fecha)}.</td></tr>`;
-      return;
-    }
-    const fmtARS = v => Number(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (!desks.length) { tbody.innerHTML = _emptyTableRow(7, `Sin datos P&L para ${esc(fecha)}.`); return; }
     tbody.innerHTML = desks.map(dk => {
       const totalColor = dk.pnl_total >= 0 ? 'var(--green)' : 'var(--red)';
       return `<tr>
         <td><span style="font-size:10px;font-weight:700;background:var(--bg4);border:1px solid var(--border);border-radius:2px;padding:2px 6px">${esc(dk.desk)}</span></td>
-        <td style="text-align:right;color:${dk.pnl_realizado >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtARS(dk.pnl_realizado)}</td>
-        <td style="text-align:right;color:${dk.pnl_no_realizado >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtARS(dk.pnl_no_realizado)}</td>
-        <td style="text-align:right;color:${totalColor};font-weight:700">${fmtARS(dk.pnl_total)}</td>
-        <td style="text-align:right">${fmtARS(dk.volumen_comprado)}</td>
-        <td style="text-align:right">${fmtARS(dk.volumen_vendido)}</td>
+        <td style="text-align:right;color:${dk.pnl_realizado >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(dk.pnl_realizado)}</td>
+        <td style="text-align:right;color:${dk.pnl_no_realizado >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(dk.pnl_no_realizado)}</td>
+        <td style="text-align:right;color:${totalColor};font-weight:700">${fmt(dk.pnl_total)}</td>
+        <td style="text-align:right">${fmt(dk.volumen_comprado)}</td>
+        <td style="text-align:right">${fmt(dk.volumen_vendido)}</td>
         <td style="text-align:right;color:var(--text3)">${dk.n_posiciones}</td>
       </tr>`;
     }).join('');
-  } catch (e) { tbody.innerHTML = _emptyTableRow(7, 'Error al cargar P&L por desk.'); }
+  });
 }
 
 
@@ -6878,25 +6801,22 @@ async function cargarPnlPorDesk() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function cargarPreciosHistorico() {
-  const tbody = document.getElementById('preciosHistBody');
-  if (!tbody) return;
-  _setTbodyLoading(tbody, 5);
-  const especie    = (document.getElementById('vpFiltroEspecie')?.value || '').trim().toUpperCase();
-  const tipo       = document.getElementById('vpFiltroTipo')?.value || '';
-  const desde      = document.getElementById('vpFiltroDesde')?.value || '';
-  const hasta      = document.getElementById('vpFiltroHasta')?.value || '';
-  const params = new URLSearchParams();
-  if (especie) params.set('especie', especie);
-  if (tipo)    params.set('precio_tipo', tipo);
-  if (desde)   params.set('fecha_desde', desde);
-  if (hasta)   params.set('fecha_hasta', hasta);
-  try {
+  await _cargarTabla('preciosHistBody', 5, async (tbody) => {
+    const especie = (document.getElementById('vpFiltroEspecie')?.value || '').trim().toUpperCase();
+    const tipo    = document.getElementById('vpFiltroTipo')?.value || '';
+    const desde   = document.getElementById('vpFiltroDesde')?.value || '';
+    const hasta   = document.getElementById('vpFiltroHasta')?.value || '';
+    const params = new URLSearchParams();
+    if (especie) params.set('especie', especie);
+    if (tipo)    params.set('precio_tipo', tipo);
+    if (desde)   params.set('fecha_desde', desde);
+    if (hasta)   params.set('fecha_hasta', hasta);
     const res = await apiFetch(`/api/prices/historico?${params}`);
-    if (!res.ok) return;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = await res.json();
     const rows = d.precios || [];
     if (!rows.length) { tbody.innerHTML = _emptyTableRow(5, 'Sin resultados.'); return; }
-    const fmtP = v => Number(v).toLocaleString('es-AR', { minimumFractionDigits: 4, maximumFractionDigits: 6 });
+    const fmtP6 = v => Number(v).toLocaleString('es-AR', { minimumFractionDigits: 4, maximumFractionDigits: 6 });
     const tipoBadge = t => {
       const colors = { AJUSTE: '#4a9eff', CORTE_MAE: '#f0a500', CIERRE: 'var(--text3)' };
       return `<span style="font-size:9px;font-weight:700;color:#fff;background:${colors[t]||'var(--border)'};border-radius:2px;padding:1px 4px">${esc(t)}</span>`;
@@ -6904,11 +6824,11 @@ async function cargarPreciosHistorico() {
     tbody.innerHTML = rows.map(r => `<tr>
       <td style="font-size:11px">${esc(r.fecha)}</td>
       <td><span class="especie-tag">${esc(r.especie)}</span></td>
-      <td class="precio-cell">${fmtP(r.precio)}</td>
+      <td class="precio-cell">${fmtP6(r.precio)}</td>
       <td>${tipoBadge(r.precio_tipo)}</td>
       <td style="font-size:11px;color:var(--text3)">${esc(r.fuente)}</td>
     </tr>`).join('');
-  } catch (e) { tbody.innerHTML = _emptyTableRow(5, 'Error al cargar.'); }
+  });
 }
 
 async function registrarCierreAjuste() {
@@ -6964,8 +6884,7 @@ async function snapshotPrecios() {
 // ════════════════════════════════════════════════════════════════════════════════
 
 // ── Shared formatters ────────────────────────────────────────────────────────
-const _fmtP = (v) => (v == null || v === 0) ? '—'
-  : Number(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const _fmtP = v => (v == null || v === 0) ? '—' : fmt(v);
 const _fmtV = (v) => v == null ? '—' : (v >= 0 ? '+' : '') + Number(v).toFixed(2);
 const _varCls = (v) => v == null ? 'var-neutral' : (v >= 0 ? 'var-positiva' : 'var-negativa');
 
