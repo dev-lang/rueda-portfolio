@@ -21,6 +21,13 @@ _BENIGN_ERROR_FRAGMENTS = (
     "duplicate column",          # SQLite / MySQL
     "already exists",            # SQLite index / PostgreSQL / MySQL
     "duplicate key name",        # MySQL index
+    # Fresh-DB case: tables do not exist yet on first startup. create_all()
+    # runs immediately after run_migrations() and creates every table with
+    # the new columns already defined in the SQLAlchemy models, so skipping
+    # ALTER/CREATE INDEX on a missing table is safe.
+    "no such table",             # SQLite
+    "undefined table",           # PostgreSQL
+    "doesn't exist",             # MySQL ("table 'x' doesn't exist")
 )
 
 
