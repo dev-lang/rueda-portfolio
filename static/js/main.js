@@ -4388,6 +4388,7 @@ function abrirModalCuenta(contexto, sentido, opId = null, opNombre = '') {
   document.getElementById('mcMonto').value    = '';
   document.getElementById('mcDescripcion').value = '';
   document.getElementById('mcResult').textContent = '';
+  _clearFieldErrors(document.getElementById('modalCuenta'));
 
   const esDebit = sentido === 'DEBIT';
   const btn = document.getElementById('mcBtnConfirmar');
@@ -4428,9 +4429,22 @@ async function confirmarModalCuenta() {
   const moneda   = document.getElementById('mcMoneda').value;
   const desc     = document.getElementById('mcDescripcion').value.trim();
   const resultEl = document.getElementById('mcResult');
+  const modal    = document.getElementById('modalCuenta');
 
-  if (!monto || monto <= 0) { resultEl.textContent = '⚠ Ingresá un monto válido.'; return; }
-  if (desc.length < 5)      { resultEl.textContent = '⚠ La descripción debe tener al menos 5 caracteres.'; return; }
+  // Limpiar errores previos antes de revalidar
+  _clearFieldErrors(modal);
+  resultEl.textContent = '';
+
+  let hasError = false;
+  if (!monto || monto <= 0) {
+    _setFieldError('mcMonto', 'Ingresá un monto válido.');
+    hasError = true;
+  }
+  if (desc.length < 5) {
+    _setFieldError('mcDescripcion', 'Debe tener al menos 5 caracteres.');
+    hasError = true;
+  }
+  if (hasError) return;
 
   const endpoint = contexto === 'firma'
     ? `/api/firma/${sentido === 'CREDIT' ? 'deposito' : 'retiro'}`
@@ -4556,6 +4570,7 @@ function abrirModalUsuario(usuario = null) {
   }
   const modal = document.getElementById('modalUsuario');
   document.getElementById('usuarioResult').textContent = '';
+  _clearFieldErrors(modal);
   if (usuario && typeof usuario === 'object') {
     document.getElementById('modalUsuarioTitulo').textContent = 'Editar Usuario';
     document.getElementById('u-id').value       = usuario.id;
@@ -4590,12 +4605,21 @@ function cerrarModalUsuario(e) {
 
 async function guardarUsuario(btn) {
   const resEl    = document.getElementById('usuarioResult');
+  const modal    = document.getElementById('modalUsuario');
+  _clearFieldErrors(modal);
   resEl.textContent = '';
   const id       = document.getElementById('u-id').value;
   const username = document.getElementById('u-username').value.trim();
   const email    = document.getElementById('u-email').value.trim();
   const role     = document.getElementById('u-rol').value;
   const password = document.getElementById('u-password').value;
+
+  if (!id) {
+    let hasError = false;
+    if (!username) { _setFieldError('u-username', 'El username es requerido.'); hasError = true; }
+    if (!password) { _setFieldError('u-password', 'La contraseña es requerida.'); hasError = true; }
+    if (hasError) return;
+  }
 
   await _withButtonLoading(btn, async () => {
     try {
@@ -4605,7 +4629,6 @@ async function guardarUsuario(btn) {
         if (password) body.password = password;
         res = await _apiFetchJson(`/api/users/${id}`, 'PATCH', body);
       } else {
-        if (!username || !password) { resEl.textContent = 'Username y contraseña son requeridos.'; return; }
         res = await _apiFetchJson('/api/users', 'POST', { username, email: email || null, role, password });
       }
       if (!res.ok) {
@@ -4676,6 +4699,7 @@ function abrirModalCliente(cliente = null) {
   }
   const modal = document.getElementById('modalCliente');
   document.getElementById('clienteResult').textContent = '';
+  _clearFieldErrors(modal);
   if (cliente && typeof cliente === 'object') {
     document.getElementById('modalClienteTitulo').textContent = 'Editar Cliente';
     document.getElementById('c-codigo-orig').value = cliente.codigo;
@@ -4710,12 +4734,18 @@ function cerrarModalCliente(e) {
 
 async function guardarCliente(btn) {
   const resEl      = document.getElementById('clienteResult');
+  const modal      = document.getElementById('modalCliente');
+  _clearFieldErrors(modal);
   resEl.textContent = '';
   const codigoOrig = document.getElementById('c-codigo-orig').value;
   const codigo     = document.getElementById('c-codigo').value.trim().toUpperCase();
   const nombre     = document.getElementById('c-nombre').value.trim();
   const razon      = document.getElementById('c-razon').value.trim();
-  if (!codigo || !nombre || !razon) { resEl.textContent = 'Todos los campos son requeridos.'; return; }
+  let hasError = false;
+  if (!codigo) { _setFieldError('c-codigo', 'El código es requerido.'); hasError = true; }
+  if (!nombre) { _setFieldError('c-nombre', 'El nombre es requerido.'); hasError = true; }
+  if (!razon)  { _setFieldError('c-razon',  'La razón social es requerida.'); hasError = true; }
+  if (hasError) return;
 
   await _withButtonLoading(btn, async () => {
     try {
@@ -5002,6 +5032,7 @@ function abrirModalBot(bot = null) {
   }
   const modal = document.getElementById('modalBot');
   document.getElementById('botResult').textContent = '';
+  _clearFieldErrors(modal);
 
   if (bot && typeof bot === 'object') {
     document.getElementById('modalBotTitulo').textContent = 'Editar instancia de Bot';
@@ -5066,6 +5097,8 @@ function cerrarModalBot(e) {
 
 async function guardarBot(btn) {
   const resEl      = document.getElementById('botResult');
+  const modal      = document.getElementById('modalBot');
+  _clearFieldErrors(modal);
   resEl.textContent = '';
 
   const id         = document.getElementById('b-id').value;
@@ -5080,8 +5113,10 @@ async function guardarBot(btn) {
   const pmRaw      = document.getElementById('b-prob-mercado')?.value;
   const probMercado= pmRaw !== '' && pmRaw != null ? parseFloat(pmRaw) : null;
 
-  if (!nombre)       { resEl.textContent = 'El nombre es requerido.'; return; }
-  if (!tipos.length) { resEl.textContent = 'Seleccioná al menos un tipo de orden.'; return; }
+  let hasError = false;
+  if (!nombre)       { _setFieldError('b-nombre', 'El nombre es requerido.'); hasError = true; }
+  if (!tipos.length) { _showResultErr(resEl, 'Seleccioná al menos un tipo de orden.'); hasError = true; }
+  if (hasError) return;
 
   const body = { nombre, enabled: true, interval, variance: variancePct / 100, max_ordenes: maxOrdenes,
     tipos_orden: tipos, perfil, fill_rate: fillRate, respetar_horario: respetar, prob_orden_mercado: probMercado };
@@ -5868,19 +5903,24 @@ function abrirModalLlamado() {
   document.getElementById('lm-monto').value       = '';
   document.getElementById('lm-descripcion').value = '';
   document.getElementById('llamadoResult').textContent = '';
+  _clearFieldErrors(document.getElementById('modalLlamado'));
   document.getElementById('modalLlamado').classList.add('active');
 }
 
 async function guardarLlamado(btn) {
   const resEl    = document.getElementById('llamadoResult');
+  const modal    = document.getElementById('modalLlamado');
+  _clearFieldErrors(modal);
   resEl.textContent = '';
   const cuentaId = parseInt(document.getElementById('lm-cuenta').value);
   const monto    = parseFloat(document.getElementById('lm-monto').value);
   const fecha    = document.getElementById('lm-fecha').value;
   const desc     = document.getElementById('lm-descripcion').value.trim() || null;
-  if (!fecha || !(cuentaId > 0) || !(monto > 0)) {
-    _showResultErr(resEl, 'Completá fecha, cuenta y monto.'); return;
-  }
+  let hasError = false;
+  if (!fecha)         { _setFieldError('lm-fecha',  'La fecha es requerida.'); hasError = true; }
+  if (!(cuentaId > 0)){ _setFieldError('lm-cuenta', 'Seleccioná una cuenta.'); hasError = true; }
+  if (!(monto > 0))   { _setFieldError('lm-monto',  'Ingresá un monto válido.'); hasError = true; }
+  if (hasError) return;
   await _withButtonLoading(btn, async () => {
     try {
       const res = await _apiFetchJson(`/api/instrumentos/${_instCurrentId}/llamados-margen`, 'POST',
@@ -6727,6 +6767,8 @@ async function abrirModalOperador(editId = null) {
   if (title) title.textContent = editId ? 'Editar Operador' : 'Nuevo Operador';
   if (idInp) idInp.value = editId || '';
   if (resEl) resEl.textContent = '';
+  const opModal = document.getElementById('modalOperador');
+  if (opModal) _clearFieldErrors(opModal);
 
   // Populate client select with current list
   _poblarSelectClientes(document.getElementById('opClienteCodigo'), null);
@@ -6760,9 +6802,14 @@ async function guardarOperador(btn) {
   const desk          = document.getElementById('opDesk').value;
   const clienteCodigo = document.getElementById('opClienteCodigo')?.value || null;
   const resEl         = document.getElementById('opResult');
+  const modal         = document.getElementById('modalOperador');
+  if (modal) _clearFieldErrors(modal);
+  if (resEl) resEl.textContent = '';
 
-  if (!nombre) { if (resEl) resEl.innerHTML = '<span style="color:var(--red)">El nombre es requerido.</span>'; return; }
-  if (!editId && !username) { if (resEl) resEl.innerHTML = '<span style="color:var(--red)">El username es requerido.</span>'; return; }
+  let hasError = false;
+  if (!nombre) { _setFieldError('opNombre', 'El nombre es requerido.'); hasError = true; }
+  if (!editId && !username) { _setFieldError('opUsername', 'El username es requerido.'); hasError = true; }
+  if (hasError) return;
 
   const origText = btn?.textContent;
   if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
@@ -7443,6 +7490,8 @@ async function refrescarSeguidos() {
       btn.innerHTML = `${svgHTML} Actualizar`;
     }, 2000);
   } catch (e) {
+    _logError('refrescarSeguidos', e);
+    showToast('No se pudieron actualizar los seguidos. Verificá tu conexión.', 'error');
     btn.classList.remove('spinning');
     btn.innerHTML = `${svgHTML} Error`;
     setTimeout(() => {
