@@ -12,11 +12,12 @@ PATCH  /api/admin/bots/{id}         — update bot (enabled, interval, variance,
 DELETE /api/admin/bots/{id}         — remove bot instance
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 
 from app.core.deps import require_role
+from app.core.rate_limiter import limiter
 from app.core.get_or_404 import get_or_404, query_or_404
 from app.db.session import get_db
 from app.models.especie_mercado import EspecieMercado
@@ -50,7 +51,9 @@ def list_tickers(
 
 
 @router.post("/tickers", status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 def create_ticker(
+    request: Request,
     payload: TickerCreate,
     db: Session = Depends(get_db),
     _: User = Depends(_admin),
@@ -78,7 +81,9 @@ def create_ticker(
 
 
 @router.patch("/tickers/{especie}")
+@limiter.limit("60/minute")
 def update_ticker(
+    request: Request,
     especie: str,
     payload: TickerUpdate,
     db: Session = Depends(get_db),
@@ -108,7 +113,9 @@ def update_ticker(
 
 
 @router.delete("/tickers/{especie}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
 def delete_ticker(
+    request: Request,
     especie: str,
     db: Session = Depends(get_db),
     _: User = Depends(_admin),
@@ -134,7 +141,9 @@ def list_bots(
 
 
 @router.post("/bots", status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 def create_bot(
+    request: Request,
     payload: BotCreate,
     db: Session = Depends(get_db),
     _: User = Depends(_admin),
@@ -171,7 +180,9 @@ def create_bot(
 
 
 @router.patch("/bots/bulk")
+@limiter.limit("30/minute")
 def bulk_update_bots(
+    request: Request,
     payload: BotBulkUpdate,
     db: Session = Depends(get_db),
     _: User = Depends(_admin),
@@ -185,7 +196,9 @@ def bulk_update_bots(
 
 
 @router.patch("/bots/{bot_id}")
+@limiter.limit("60/minute")
 def update_bot(
+    request: Request,
     bot_id: int,
     payload: BotUpdate,
     db: Session = Depends(get_db),
@@ -239,7 +252,9 @@ def update_bot(
 
 
 @router.delete("/bots/{bot_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
 def delete_bot(
+    request: Request,
     bot_id: int,
     db: Session = Depends(get_db),
     _: User = Depends(_admin),
@@ -342,7 +357,9 @@ def get_config(
 
 
 @router.patch("/config")
+@limiter.limit("30/minute")
 def update_config(
+    request: Request,
     payload: ConfigUpdate,
     db: Session = Depends(get_db),
     _: User = Depends(_admin),
@@ -365,7 +382,9 @@ def update_config(
 # ── Demo data reset ─────────────────────────────────────────────────────────────
 
 @router.delete("/demo-reset", status_code=status.HTTP_200_OK)
+@limiter.limit("5/minute")
 def demo_reset(
+    request: Request,
     db: Session = Depends(get_db),
     _: User = Depends(_admin),
 ):

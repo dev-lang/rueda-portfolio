@@ -6,8 +6,27 @@ Each ALTER TABLE is wrapped in try/except so it is safe to run on an already-
 migrated database (SQLite raises OperationalError when a column already exists).
 """
 
+import logging
+
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
+
+_log = logging.getLogger(__name__)
+
+# Substrings that identify benign "already migrated" errors per backend.
+# Anything else bubbles up so real problems (disk full, permissions, bad SQL)
+# are not silently swallowed.
+_BENIGN_ERROR_FRAGMENTS = (
+    "duplicate column",          # SQLite / MySQL
+    "already exists",            # SQLite index / PostgreSQL / MySQL
+    "duplicate key name",        # MySQL index
+)
+
+
+def _is_benign_migration_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return any(frag in msg for frag in _BENIGN_ERROR_FRAGMENTS)
 
 
 def run_migrations(engine: Engine) -> None:
@@ -172,8 +191,14 @@ def run_migrations(engine: Engine) -> None:
         for stmt in _migrations:
             try:
                 conn.execute(text(stmt))
-            except Exception:
-                pass  # column already exists — safe to ignore
+            except OperationalError as exc:
+                if _is_benign_migration_error(exc):
+                    continue  # already migrated
+                _log.error("Migración falló: %s — %s", stmt, exc)
+                raise
+            except Exception as exc:
+                _log.error("Migración falló con error inesperado: %s — %s", stmt, exc)
+                raise
         conn.commit()
 
-    print("✅ Migraciones de esquema ejecutadas.")
+    _log.info("Migraciones de esquema ejecutadas.")

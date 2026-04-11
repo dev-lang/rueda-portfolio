@@ -353,21 +353,30 @@ function _updateNotifBadge() {
   }
 }
 
+let _notifCloseHandler = null;
+
 function abrirNotifPanel() {
   _notifUnread = 0;
   _updateNotifBadge();
   const dropdown = document.getElementById('notifDropdown');
   if (!dropdown) return;
+
+  // Always remove any previous handler first — prevents accumulation
+  if (_notifCloseHandler) {
+    document.removeEventListener('click', _notifCloseHandler, true);
+    _notifCloseHandler = null;
+  }
+
   const isOpen = dropdown.classList.toggle('open');
   if (isOpen) {
-    // Close when clicking outside
-    const closeOnOutside = (e) => {
+    _notifCloseHandler = (e) => {
       if (!dropdown.contains(e.target) && e.target.id !== 'btnNotifBell') {
         dropdown.classList.remove('open');
-        document.removeEventListener('click', closeOnOutside, true);
+        document.removeEventListener('click', _notifCloseHandler, true);
+        _notifCloseHandler = null;
       }
     };
-    setTimeout(() => document.addEventListener('click', closeOnOutside, true), 0);
+    setTimeout(() => document.addEventListener('click', _notifCloseHandler, true), 0);
   }
 }
 

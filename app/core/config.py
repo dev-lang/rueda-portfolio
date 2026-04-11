@@ -61,15 +61,16 @@ class Settings:
 settings = Settings()
 
 # ── Startup warnings for insecure defaults ────────────────────────────────────
-_DEFAULT_PASSWORDS = {
-    "ADMIN_PASSWORD":    ("admin",    "changeme123"),
-    "OPERADOR1_PASSWORD": ("operador1", "operador123"),
-    "OPERADOR2_PASSWORD": ("operador2", "operador456"),
+# Never log the actual default password — only flag that the env var is missing.
+_DEFAULT_PASSWORD_VARS = {
+    "ADMIN_PASSWORD":     "admin",
+    "OPERADOR1_PASSWORD": "operador1",
+    "OPERADOR2_PASSWORD": "operador2",
 }
-for _env_var, (_user, _default) in _DEFAULT_PASSWORDS.items():
+for _env_var, _user in _DEFAULT_PASSWORD_VARS.items():
     if os.getenv(_env_var) is None:
         _log.warning(
-            "SEGURIDAD: %s no está configurada. El usuario '%s' usará la contraseña "
-            "por defecto '%s'. Configurá %s en .env antes de ir a producción.",
-            _env_var, _user, _default, _env_var,
+            "SEGURIDAD: %s no está configurada. El usuario '%s' usará una contraseña "
+            "por defecto insegura. Configurá %s en .env antes de ir a producción.",
+            _env_var, _user, _env_var,
         )
