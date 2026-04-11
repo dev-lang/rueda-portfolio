@@ -369,6 +369,23 @@ function _emptyTableRow(colSpan, msg) {
   return `<tr><td colspan="${colSpan}" class="text-muted">${msg}</td></tr>`;
 }
 
+// ── ERROR TABLE ROW HELPER ────────────────────────────────────────────────
+/** Returns a single-row colspan cell styled as an error message. */
+function _errorTableRow(colSpan, msg) {
+  return `<tr><td colspan="${colSpan}" style="color:var(--red)">Error: ${esc(msg)}</td></tr>`;
+}
+
+// ── TOGGLE PATCH HELPER ───────────────────────────────────────────────────
+/**
+ * Send a PATCH for a toggle (active flag, etc.) and refresh the table afterwards.
+ * On error, the refresher still runs so the UI snaps back to the real DB state.
+ */
+async function _togglePatch(url, body, refresher) {
+  try { await _apiFetchJson(url, 'PATCH', body); }
+  catch(e) { _logError('togglePatch', e); }
+  finally { if (refresher) await refresher(); }
+}
+
 // ── STATE ──────────────────────────────────────────────────────────────────
 const state = {
   // Órdenes
@@ -4559,7 +4576,7 @@ async function cargarUsuarios() {
       </tr>
     `).join('');
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="8" style="color:var(--red)">Error: ${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = _errorTableRow(8, e.message);
   }
 }
 
@@ -4648,12 +4665,7 @@ async function guardarUsuario(btn) {
 }
 
 async function toggleUsuarioActivo(userId, activo) {
-  try {
-    await _apiFetchJson(`/api/users/${userId}`, 'PATCH', { is_active: activo });
-    await cargarUsuarios();
-  } catch(e) {
-    await cargarUsuarios(); // refresh to restore correct state
-  }
+  return _togglePatch(`/api/users/${userId}`, { is_active: activo }, cargarUsuarios);
 }
 
 // ── CLIENTES ──────────────────────────────────────────────────────────────────
@@ -4688,7 +4700,7 @@ async function cargarClientesAdmin() {
       </tr>
     `).join('');
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="7" style="color:var(--red)">Error: ${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = _errorTableRow(7, e.message);
   }
 }
 
@@ -4773,12 +4785,7 @@ async function guardarCliente(btn) {
 }
 
 async function toggleClienteActivo(codigo, activo) {
-  try {
-    await _apiFetchJson(`/api/clientes/${codigo}`, 'PATCH', { activo });
-    await cargarClientesAdmin();
-  } catch {
-    await cargarClientesAdmin();
-  }
+  return _togglePatch(`/api/clientes/${codigo}`, { activo }, cargarClientesAdmin);
 }
 
 // ── TICKERS ───────────────────────────────────────────────────────────────────
@@ -4817,7 +4824,7 @@ async function cargarTickersAdmin() {
       </tr>
     `).join('');
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="6" style="color:var(--red)">Error: ${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = _errorTableRow(6, e.message);
   }
 }
 
@@ -4893,12 +4900,7 @@ async function guardarTicker(btn) {
 }
 
 async function toggleTickerActivo(especie, activo) {
-  try {
-    await _apiFetchJson(`/api/admin/tickers/${especie}`, 'PATCH', { activo });
-    await cargarTickersAdmin();
-  } catch {
-    await cargarTickersAdmin();
-  }
+  return _togglePatch(`/api/admin/tickers/${especie}`, { activo }, cargarTickersAdmin);
 }
 
 // ── BOTS DE MERCADO (multi-instancia) ─────────────────────────────────────────
@@ -4995,7 +4997,7 @@ async function cargarBots() {
       </tr>
     `}).join('');
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="7" style="color:var(--red)">Error: ${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = _errorTableRow(7, e.message);
   }
 }
 
@@ -5526,7 +5528,7 @@ async function cargarMovimientosBot(page) {
       </tr>`;
     }).join('');
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="6" style="color:var(--red)">Error: ${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = _errorTableRow(6, e.message);
   }
 }
 
@@ -5694,7 +5696,7 @@ async function cargarInstrumentos() {
       </tr>
     `).join('');
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="7" style="color:var(--red)">Error: ${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = _errorTableRow(7, e.message);
   }
 }
 
@@ -5815,10 +5817,7 @@ async function guardarInstrumento() {
 }
 
 async function toggleInstrumentoActivo(id, activo) {
-  try {
-    await _apiFetchJson(`/api/instrumentos/${id}`, 'PATCH', { activo });
-    await cargarInstrumentos();
-  } catch { await cargarInstrumentos(); }
+  return _togglePatch(`/api/instrumentos/${id}`, { activo }, cargarInstrumentos);
 }
 
 async function guardarDetalleRentaFija(btn) {
@@ -5891,7 +5890,7 @@ async function cargarLlamados(instId) {
       </tr>
     `).join('');
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="5" style="color:var(--red)">Error: ${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = _errorTableRow(5, e.message);
   }
 }
 
@@ -5986,7 +5985,7 @@ async function cargarPnl() {
     `).join('');
     if (hasta) cargarResumenPnl(hasta);
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="9" style="color:var(--red)">Error: ${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = _errorTableRow(9, e.message);
   }
 }
 
@@ -6092,7 +6091,7 @@ async function cargarTcHistorico() {
       </tr>
     `).join('');
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="5" style="color:var(--red)">Error: ${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = _errorTableRow(5, e.message);
   }
 }
 
@@ -6217,7 +6216,7 @@ async function cargarContrapartes() {
       </tr>
     `).join('');
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="5" style="color:var(--red)">Error: ${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = _errorTableRow(5, e.message);
   }
 }
 
@@ -6280,10 +6279,7 @@ async function guardarContraparte(btn) {
 }
 
 async function toggleContraparteActivo(id, activo) {
-  try {
-    await _apiFetchJson(`/api/contrapartes/${id}`, 'PATCH', { activo });
-    await cargarContrapartes();
-  } catch { await cargarContrapartes(); }
+  return _togglePatch(`/api/contrapartes/${id}`, { activo }, cargarContrapartes);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -6318,7 +6314,7 @@ async function cargarLimites() {
       </tr>
     `).join('');
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="8" style="color:var(--red)">Error: ${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = _errorTableRow(8, e.message);
   }
 }
 
@@ -6390,10 +6386,7 @@ async function guardarLimiteRiesgo(btn) {
 }
 
 async function toggleLimiteActivo(id, activo) {
-  try {
-    await _apiFetchJson(`/api/riesgo/limites/${id}`, 'PATCH', { activo });
-    await cargarLimites();
-  } catch { await cargarLimites(); }
+  return _togglePatch(`/api/riesgo/limites/${id}`, { activo }, cargarLimites);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -6429,7 +6422,7 @@ async function cargarLiquidaciones(page = 1) {
       </tr>
     `).join('');
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="8" style="color:var(--red)">Error: ${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = _errorTableRow(8, e.message);
   }
 }
 
