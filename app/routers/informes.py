@@ -1,7 +1,7 @@
 import asyncio
 import io
 from datetime import date
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session
 
@@ -67,7 +67,10 @@ def exportar(
         try:
             fecha_parsed = date.fromisoformat(fecha)
         except ValueError:
-            pass
+            raise HTTPException(
+                status_code=400,
+                detail=f"Formato de fecha inválido: '{fecha}'. Usá YYYY-MM-DD.",
+            )
 
     contenido = informe_service.export_csv(db, tipo=tipo, fecha=fecha_parsed)
     filename = f"{tipo}_{today}.csv"

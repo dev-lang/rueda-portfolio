@@ -546,6 +546,7 @@ function _updateSidebarDots(color) {
 
 function setStatusEvent(msg) {
   const el = document.getElementById('status-event');
+  if (!el) return;
   el.textContent = msg;
   setTimeout(() => { el.textContent = ''; }, STATUS_EVENT_DURATION_MS);
 }
@@ -3687,7 +3688,7 @@ async function _cargarEspeciesDatalist() {
   const especies = await res.json();
   _especiesValidas.clear();
   especies.forEach(e => _especiesValidas.add(e));
-  dl.innerHTML = especies.map(e => `<option value="${e}">`).join('');
+  dl.innerHTML = especies.map(e => `<option value="${esc(e)}">`).join('');
 }
 
 async function _cargarClientes() {
@@ -3809,18 +3810,23 @@ function _confirmar(titulo, msg, onConfirm) {
     </div>`;
   document.body.appendChild(overlay);
 
-  const cancel = () => overlay.remove();
+  let _confirmTimer = null;
+  const cleanup = () => {
+    if (_confirmTimer) { clearTimeout(_confirmTimer); _confirmTimer = null; }
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+  };
+  const cancel = () => cleanup();
   overlay.querySelector('#btn-confirm-cancel').onclick = cancel;
-  overlay.querySelector('#btn-confirm-ok').onclick = () => { clearTimeout(_confirmTimer); overlay.remove(); onConfirm(); };
+  overlay.querySelector('#btn-confirm-ok').onclick = () => { cleanup(); onConfirm(); };
   overlay.onclick = (e) => { if (e.target === overlay) cancel(); };
 
   // ESC key closes the dialog
-  const onKey = (e) => { if (e.key === 'Escape') { cancel(); document.removeEventListener('keydown', onKey); } };
+  const onKey = (e) => { if (e.key === 'Escape') cancel(); };
   document.addEventListener('keydown', onKey);
-  overlay.addEventListener('remove', () => { clearTimeout(_confirmTimer); document.removeEventListener('keydown', onKey); }, { once: true });
 
   // Auto-dismiss after 10 minutes to prevent stale confirm dialogs
-  let _confirmTimer = setTimeout(() => cancel(), CONFIRM_AUTODISMISS_MS);
+  _confirmTimer = setTimeout(() => cancel(), CONFIRM_AUTODISMISS_MS);
 
   // Focus confirm button for keyboard accessibility
   overlay.querySelector('#btn-confirm-ok').focus();
@@ -3983,7 +3989,7 @@ async function cargarFirma(page = 1) {
         : '';
     }
   } catch(e) {
-    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="text-muted">Error al cargar: ${e.message}</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="text-muted">Error al cargar: ${esc(e.message)}</td></tr>`;
   }
 
   // Posiciones
@@ -4013,7 +4019,7 @@ async function cargarPosicionesFirma() {
       <td style="text-align:right">${(p.cantidad_pendiente_liquidacion||0).toLocaleString('es-AR')}</td>
     </tr>`).join('');
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-muted">Error al cargar: ${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="text-muted">Error al cargar: ${esc(e.message)}</td></tr>`;
   }
 }
 
@@ -4054,7 +4060,7 @@ async function cargarCuentasOperadores() {
       </tr>`;
     }).join('');
   } catch(e) {
-    document.getElementById('cuentasOpBody').innerHTML = `<tr><td colspan="6" class="text-muted">Error: ${e.message}</td></tr>`;
+    document.getElementById('cuentasOpBody').innerHTML = `<tr><td colspan="6" class="text-muted">Error: ${esc(e.message)}</td></tr>`;
   }
 }
 

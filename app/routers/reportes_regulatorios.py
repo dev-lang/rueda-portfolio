@@ -85,7 +85,7 @@ def reporte_bcra_cambios(
 @router.get("/uif-inusuales")
 def reporte_uif_inusuales(
     fecha: date = Query(default_factory=date.today),
-    umbral_monto: float = Query(default=1_000_000.0, description="Umbral ARS para alerta"),
+    umbral_monto: float = Query(default=1_000_000.0, gt=0, le=1e12, description="Umbral ARS para alerta"),
     formato: str = Query(default="json", description="json | csv"),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
