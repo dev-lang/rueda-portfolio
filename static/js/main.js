@@ -1627,26 +1627,24 @@ function setPrecioDesdeOB(precio) {
   _actualizarImporte();
 }
 
-async function enviarNuevaOrden() {
-  const btn = document.querySelector('#modalNuevaOrden .btn-nueva-orden[data-action="enviar-nueva-orden"]')
-           || document.querySelector('#modalNuevaOrden button[type="submit"]')
-           || document.querySelector('#modalNuevaOrden .modal-footer .btn-nueva-orden');
-  if (btn?.disabled) return;
+function _leerFormOrden() {
+  const cantStr = document.getElementById('f-cantidad').value;
+  return {
+    tipoPrecio:  document.getElementById('f-tipo-precio').value,
+    precioStr:   document.getElementById('f-precio').value,
+    cantStr,
+    tif:         document.getElementById('f-tif').value,
+    fechaExp:    document.getElementById('f-fecha-exp').value,
+    cantVisible: document.getElementById('f-cant-visible').value,
+    tipoAct:     document.getElementById('f-tipo-activacion').value,
+    precioAct:   document.getElementById('f-precio-activacion').value,
+    deskVal:     document.getElementById('f-desk')?.value || '',
+    especie:     document.getElementById('f-especie').value.toUpperCase().trim(),
+    cantidad:    parseInt(cantStr),
+  };
+}
 
-  // ── Read form values ───────────────────────────────────────────────────────
-  const tipoPrecio  = document.getElementById('f-tipo-precio').value;
-  const precioStr   = document.getElementById('f-precio').value;
-  const cantStr     = document.getElementById('f-cantidad').value;
-  const tif         = document.getElementById('f-tif').value;
-  const fechaExp    = document.getElementById('f-fecha-exp').value;
-  const cantVisible = document.getElementById('f-cant-visible').value;
-  const tipoAct     = document.getElementById('f-tipo-activacion').value;
-  const precioAct   = document.getElementById('f-precio-activacion').value;
-  const deskVal     = document.getElementById('f-desk')?.value || '';
-  const especie     = document.getElementById('f-especie').value.toUpperCase().trim();
-  const cantidad    = parseInt(cantStr);
-
-  // ── Validate BEFORE disabling button (prevents ghost-disabled state) ───────
+function _validarFormOrden({ especie, cantidad, tipoPrecio, precioStr, tif, fechaExp, tipoAct, precioAct }) {
   const form = document.getElementById('modalNuevaOrden');
   _clearFieldErrors(form);
   let hasError = false;
@@ -1674,7 +1672,20 @@ async function enviarNuevaOrden() {
     _setFieldError('f-precio-activacion', 'Ingresá el precio de activación.');
     hasError = true;
   }
-  if (hasError) return;
+  return hasError;
+}
+
+async function enviarNuevaOrden() {
+  const btn = document.querySelector('#modalNuevaOrden .btn-nueva-orden[data-action="enviar-nueva-orden"]')
+           || document.querySelector('#modalNuevaOrden button[type="submit"]')
+           || document.querySelector('#modalNuevaOrden .modal-footer .btn-nueva-orden');
+  if (btn?.disabled) return;
+
+  // ── Read + validate BEFORE disabling button (prevents ghost-disabled state) ─
+  const fields = _leerFormOrden();
+  if (_validarFormOrden(fields)) return;
+
+  const { especie, cantidad, tipoPrecio, precioStr, tif, fechaExp, cantVisible, tipoAct, precioAct, deskVal } = fields;
 
   // ── All valid: lock button + show spinner ──────────────────────────────────
   const clienteVal = document.getElementById('f-cliente')?.value || 'STD';
@@ -3084,6 +3095,140 @@ function _makeChart(containerId, height) {
   });
 }
 
+function _crearSeriesPrincipal(renderData, isOHLCV) {
+  let priceSeries;
+  if (isOHLCV) {
+    priceSeries = _lwChart.addCandlestickSeries({
+      upColor:        '#267326',
+      downColor:      '#CC0000',
+      borderUpColor:  '#267326',
+      borderDownColor:'#CC0000',
+      wickUpColor:    '#267326',
+      wickDownColor:  '#CC0000',
+    });
+    priceSeries.setData(renderData.map(d => ({
+      time:  d.time,
+      open:  d.open,
+      high:  d.high,
+      low:   d.low,
+      close: d.close,
+    })));
+    const volSeries = _lwChart.addHistogramSeries({
+      priceFormat:  { type: 'volume' },
+      priceScaleId: 'vol',
+      lastValueVisible: false,
+    });
+    _lwChart.priceScale('vol').applyOptions({
+      scaleMargins: { top: 0.80, bottom: 0 },
+    });
+    volSeries.setData(renderData.map(d => ({
+      time:  d.time,
+      value: d.volume,
+      color: d.close >= d.open ? 'rgba(38,115,38,0.50)' : 'rgba(204,0,0,0.50)',
+    })));
+    _lwSeries.vol = volSeries;
+  } else {
+    priceSeries = _lwChart.addAreaSeries({
+      lineColor:        '#0054E3',
+      topColor:         'rgba(0, 84, 227, 0.28)',
+      bottomColor:      'rgba(0, 84, 227, 0.02)',
+      lineWidth:        2,
+      priceLineVisible: true,
+      crosshairMarkerVisible: true,
+    });
+    priceSeries.setData(renderData);
+  }
+  _lwSeries.price = priceSeries;
+  return priceSeries;
+}
+
+function _aplicarIndicadores(priceSeries, lineData) {
+  const bbBadge = document.getElementById('chartBullBearPhase');
+  if (bbBadge) bbBadge.style.display = 'none';
+  if (_chartIndicators.has('bullbear') && !_INTRADAY_IVS.has(_chartIntervalo) && _chartFuente === 'mercado') {
+    const { markers: bbMarkers, currentPhase } = _detectBullBear(lineData);
+    if (bbMarkers.length) priceSeries.setMarkers(bbMarkers);
+    if (bbBadge && currentPhase) {
+      bbBadge.textContent = currentPhase === 'bull' ? '▲ Bull Market' : '▼ Bear Market';
+      bbBadge.style.color = currentPhase === 'bull' ? '#267326' : '#CC0000';
+      bbBadge.style.display = 'block';
+    }
+  }
+  if (_chartIndicators.has('sma20')) {
+    const sma = _calcSMA(lineData, 20);
+    if (sma.length) {
+      const s = _lwChart.addLineSeries({ color: '#FF8C00', lineWidth: 1, title: 'SMA 20', lastValueVisible: true });
+      s.setData(sma);
+      _lwSeries.sma20 = s;
+    }
+  }
+  if (_chartIndicators.has('sma50')) {
+    const sma = _calcSMA(lineData, 50);
+    if (sma.length) {
+      const s = _lwChart.addLineSeries({ color: '#267326', lineWidth: 1, title: 'SMA 50', lastValueVisible: true });
+      s.setData(sma);
+      _lwSeries.sma50 = s;
+    }
+  }
+  if (_chartIndicators.has('ema20')) {
+    const ema = _calcEMA(lineData, 20);
+    if (ema.length) {
+      const s = _lwChart.addLineSeries({
+        color: '#CC0000', lineWidth: 1, title: 'EMA 20',
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        lastValueVisible: true,
+      });
+      s.setData(ema);
+      _lwSeries.ema20 = s;
+    }
+  }
+  if (_chartIndicators.has('bb')) {
+    const bb = _calcBollinger(lineData, 20, 2);
+    if (bb.length) {
+      const dotted = LightweightCharts.LineStyle.Dotted;
+      const ub = _lwChart.addLineSeries({ color: 'rgba(140, 0, 200, 0.65)', lineWidth: 1, title: 'BB+2σ', lineStyle: dotted, lastValueVisible: false });
+      const mb = _lwChart.addLineSeries({ color: 'rgba(140, 0, 200, 0.90)', lineWidth: 1, title: 'BB mid', lastValueVisible: false });
+      const lb = _lwChart.addLineSeries({ color: 'rgba(140, 0, 200, 0.65)', lineWidth: 1, title: 'BB-2σ', lineStyle: dotted, lastValueVisible: false });
+      ub.setData(bb.map(d => ({ time: d.time, value: d.upper })));
+      mb.setData(bb.map(d => ({ time: d.time, value: d.mid   })));
+      lb.setData(bb.map(d => ({ time: d.time, value: d.lower })));
+      _lwSeries.bb = { ub, mb, lb };
+    }
+  }
+}
+
+function _crearPaneRSI(lineData) {
+  _lwChartRsi = _makeChart('chartRsiContainer', 120);
+  const rsiData = _calcRSI(lineData, 14);
+  if (rsiData.length) {
+    const s = _lwChartRsi.addLineSeries({ color: '#0054E3', lineWidth: 1, title: 'RSI 14' });
+    s.setData(rsiData);
+    const ob = _lwChartRsi.addLineSeries({ color: 'rgba(204,0,0,0.45)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, lastValueVisible: false, priceLineVisible: false });
+    const os = _lwChartRsi.addLineSeries({ color: 'rgba(38,115,38,0.45)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, lastValueVisible: false, priceLineVisible: false });
+    ob.setData(rsiData.map(d => ({ time: d.time, value: 70 })));
+    os.setData(rsiData.map(d => ({ time: d.time, value: 30 })));
+    _lwSeries.rsi = s;
+  }
+}
+
+function _crearPaneMACDI(lineData) {
+  _lwChartMacd = _makeChart('chartMacdContainer', 120);
+  const { macdLine, signalLine, histogram } = _calcMACD(lineData);
+  if (macdLine.length) {
+    const ms = _lwChartMacd.addLineSeries({ color: '#0054E3', lineWidth: 1, title: 'MACD' });
+    const ss = _lwChartMacd.addLineSeries({ color: '#FF8C00', lineWidth: 1, title: 'Signal' });
+    const hs = _lwChartMacd.addHistogramSeries({ priceFormat: { type: 'price', minMove: 0.001 }, lastValueVisible: false });
+    ms.setData(macdLine);
+    ss.setData(signalLine);
+    hs.setData(histogram.map(d => ({
+      time:  d.time,
+      value: d.value,
+      color: d.value >= 0 ? 'rgba(38,115,38,0.70)' : 'rgba(204,0,0,0.70)',
+    })));
+    _lwSeries.macd = { ms, ss, hs };
+  }
+}
+
 function _renderizarGrafico(data) {
   _destruirGraficos();
 
@@ -3133,149 +3278,14 @@ function _renderizarGrafico(data) {
     });
   }
 
-  let priceSeries;
-  if (isOHLCV) {
-    // Candlestick series
-    priceSeries = _lwChart.addCandlestickSeries({
-      upColor:        '#267326',
-      downColor:      '#CC0000',
-      borderUpColor:  '#267326',
-      borderDownColor:'#CC0000',
-      wickUpColor:    '#267326',
-      wickDownColor:  '#CC0000',
-    });
-    priceSeries.setData(renderData.map(d => ({
-      time:  d.time,
-      open:  d.open,
-      high:  d.high,
-      low:   d.low,
-      close: d.close,
-    })));
-
-    // Volume histogram on a separate price scale within the main chart
-    const volSeries = _lwChart.addHistogramSeries({
-      priceFormat:  { type: 'volume' },
-      priceScaleId: 'vol',
-      lastValueVisible: false,
-    });
-    _lwChart.priceScale('vol').applyOptions({
-      scaleMargins: { top: 0.80, bottom: 0 },
-    });
-    volSeries.setData(renderData.map(d => ({
-      time:  d.time,
-      value: d.volume,
-      color: d.close >= d.open ? 'rgba(38,115,38,0.50)' : 'rgba(204,0,0,0.50)',
-    })));
-    _lwSeries.vol = volSeries;
-  } else {
-    // Area/line series for daily mercado closes
-    priceSeries = _lwChart.addAreaSeries({
-      lineColor:        '#0054E3',
-      topColor:         'rgba(0, 84, 227, 0.28)',
-      bottomColor:      'rgba(0, 84, 227, 0.02)',
-      lineWidth:        2,
-      priceLineVisible: true,
-      crosshairMarkerVisible: true,
-    });
-    priceSeries.setData(renderData);
-  }
-  _lwSeries.price = priceSeries;
-
-  // ── Bull/Bear market phases ────────────────────────────────────────────────
-  const _bbBadge = document.getElementById('chartBullBearPhase');
-  if (_bbBadge) _bbBadge.style.display = 'none';
-  if (_chartIndicators.has('bullbear') && !_INTRADAY_IVS.has(_chartIntervalo) && _chartFuente === 'mercado') {
-    const { markers: bbMarkers, currentPhase } = _detectBullBear(renderData);
-    if (bbMarkers.length) priceSeries.setMarkers(bbMarkers);
-    if (_bbBadge && currentPhase) {
-      _bbBadge.textContent = currentPhase === 'bull' ? '▲ Bull Market' : '▼ Bear Market';
-      _bbBadge.style.color = currentPhase === 'bull' ? '#267326' : '#CC0000';
-      _bbBadge.style.display = 'block';
-    }
-  }
+  const priceSeries = _crearSeriesPrincipal(renderData, isOHLCV);
 
   // Normalise data to {time, value} for all indicator calculations
   const lineData = renderData.map(d => ({ time: d.time, value: d.close ?? d.value }));
+  _aplicarIndicadores(priceSeries, lineData);
 
-  // SMA 20
-  if (_chartIndicators.has('sma20')) {
-    const sma = _calcSMA(lineData, 20);
-    if (sma.length) {
-      const s = _lwChart.addLineSeries({ color: '#FF8C00', lineWidth: 1, title: 'SMA 20', lastValueVisible: true });
-      s.setData(sma);
-      _lwSeries.sma20 = s;
-    }
-  }
-  // SMA 50
-  if (_chartIndicators.has('sma50')) {
-    const sma = _calcSMA(lineData, 50);
-    if (sma.length) {
-      const s = _lwChart.addLineSeries({ color: '#267326', lineWidth: 1, title: 'SMA 50', lastValueVisible: true });
-      s.setData(sma);
-      _lwSeries.sma50 = s;
-    }
-  }
-  // EMA 20
-  if (_chartIndicators.has('ema20')) {
-    const ema = _calcEMA(lineData, 20);
-    if (ema.length) {
-      const s = _lwChart.addLineSeries({
-        color: '#CC0000', lineWidth: 1, title: 'EMA 20',
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        lastValueVisible: true,
-      });
-      s.setData(ema);
-      _lwSeries.ema20 = s;
-    }
-  }
-  // Bollinger Bands
-  if (_chartIndicators.has('bb')) {
-    const bb = _calcBollinger(lineData, 20, 2);
-    if (bb.length) {
-      const dotted = LightweightCharts.LineStyle.Dotted;
-      const ub = _lwChart.addLineSeries({ color: 'rgba(140, 0, 200, 0.65)', lineWidth: 1, title: 'BB+2σ', lineStyle: dotted, lastValueVisible: false });
-      const mb = _lwChart.addLineSeries({ color: 'rgba(140, 0, 200, 0.90)', lineWidth: 1, title: 'BB mid', lastValueVisible: false });
-      const lb = _lwChart.addLineSeries({ color: 'rgba(140, 0, 200, 0.65)', lineWidth: 1, title: 'BB-2σ', lineStyle: dotted, lastValueVisible: false });
-      ub.setData(bb.map(d => ({ time: d.time, value: d.upper })));
-      mb.setData(bb.map(d => ({ time: d.time, value: d.mid   })));
-      lb.setData(bb.map(d => ({ time: d.time, value: d.lower })));
-      _lwSeries.bb = { ub, mb, lb };
-    }
-  }
-
-  // ── RSI pane ──────────────────────────────────────────────────────────────
-  if (hasRsi) {
-    _lwChartRsi = _makeChart('chartRsiContainer', 120);
-    const rsiData = _calcRSI(lineData, 14);
-    if (rsiData.length) {
-      const s = _lwChartRsi.addLineSeries({ color: '#0054E3', lineWidth: 1, title: 'RSI 14' });
-      s.setData(rsiData);
-      const ob = _lwChartRsi.addLineSeries({ color: 'rgba(204,0,0,0.45)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, lastValueVisible: false, priceLineVisible: false });
-      const os = _lwChartRsi.addLineSeries({ color: 'rgba(38,115,38,0.45)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, lastValueVisible: false, priceLineVisible: false });
-      ob.setData(rsiData.map(d => ({ time: d.time, value: 70 })));
-      os.setData(rsiData.map(d => ({ time: d.time, value: 30 })));
-      _lwSeries.rsi = s;
-    }
-  }
-
-  // ── MACD pane ─────────────────────────────────────────────────────────────
-  if (hasMacd) {
-    _lwChartMacd = _makeChart('chartMacdContainer', 120);
-    const { macdLine, signalLine, histogram } = _calcMACD(lineData);
-    if (macdLine.length) {
-      const ms = _lwChartMacd.addLineSeries({ color: '#0054E3', lineWidth: 1, title: 'MACD' });
-      const ss = _lwChartMacd.addLineSeries({ color: '#FF8C00', lineWidth: 1, title: 'Signal' });
-      const hs = _lwChartMacd.addHistogramSeries({ priceFormat: { type: 'price', minMove: 0.001 }, lastValueVisible: false });
-      ms.setData(macdLine);
-      ss.setData(signalLine);
-      hs.setData(histogram.map(d => ({
-        time:  d.time,
-        value: d.value,
-        color: d.value >= 0 ? 'rgba(38,115,38,0.70)' : 'rgba(204,0,0,0.70)',
-      })));
-      _lwSeries.macd = { ms, ss, hs };
-    }
-  }
+  if (hasRsi)  _crearPaneRSI(lineData);
+  if (hasMacd) _crearPaneMACDI(lineData);
 
   // ── Sync time scales across panes ─────────────────────────────────────────
   if (_lwChartRsi || _lwChartMacd) {
@@ -3286,7 +3296,6 @@ function _renderizarGrafico(data) {
     });
   }
 
-  // Fit content on render
   _lwChart.timeScale().fitContent();
 }
 
